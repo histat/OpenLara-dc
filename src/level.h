@@ -1728,6 +1728,7 @@ struct Level : IGame {
                 level.fillObjectTexture((AtlasTile*)tiles[t.tile].data, uv, &t);
             }
 
+        #ifdef USE_INFLATE
             for (int i = 0; i < level.tilesCount; i++) {
                 char buf[256];
                 sprintf(buf, "texture/%s_%d.png", TR::LEVEL_INFO[level.id].name, i);
@@ -1737,6 +1738,7 @@ struct Level : IGame {
                     tiles[i].data = (uint32*)Texture::LoadPNG(stream, tiles[i].width, tiles[i].height);
                 }
             }
+        #endif
 
             atlasRooms   =
             atlasObjects =

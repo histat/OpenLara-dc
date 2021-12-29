@@ -164,11 +164,11 @@ static const OptionItem optSound[] = {
 #endif
 };
 
-#if defined(_OS_PSP) || defined(_OS_PSV) || defined(_OS_3DS) || defined(_OS_GCW0) || defined(_OS_CLOVER) || defined(_OS_PSC) || defined(_OS_XBOX)
+#if defined(_OS_PSP) || defined(_OS_PSV) || defined(_OS_3DS) || defined(_OS_GCW0) || defined(_OS_CLOVER) || defined(_OS_PSC) || defined(_OS_XBOX) || defined(_OS_DC)
     #define INV_GAMEPAD_ONLY
 #endif
 
-#if defined(_OS_PSP) || defined(_OS_PSV) || defined(_OS_3DS) || defined(_OS_GCW0)
+#if defined(_OS_PSP) || defined(_OS_PSV) || defined(_OS_3DS) || defined(_OS_GCW0) || defined(_OS_DC)
     #define INV_SINGLE_PLAYER
 #endif
 

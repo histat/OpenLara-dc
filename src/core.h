@@ -137,9 +137,16 @@
     #define NOMINMAX
     #include <xtl.h>
     #include <xgraphics.h>
+#elif __DC__
+    #define _OS_DC   1
+    #define _GAPI_TA  1
+
+    #undef OS_FILEIO_CACHE
+    #undef OS_PTHREAD_MT
+    #undef USE_CUBEMAP_MIPS
 #endif
 
-#ifndef _OS_PSP
+#if !defined(_OS_PSP) && !defined(_OS_DC)
     #define USE_INFLATE
 #endif
 
@@ -147,7 +154,7 @@
     #include "libs/tinf/tinf.h"
 #endif
 
-#if defined(_GAPI_SW) || defined(_GAPI_GU)
+#if defined(_GAPI_SW) || defined(_GAPI_GU) || defined(_GAPI_TA)
     #define FFP
 #endif
 
@@ -312,7 +319,7 @@ namespace Core {
             }
 
             void setLighting(Quality value) {
-            #if defined(_GAPI_SW) || defined(_GAPI_GU)
+            #if defined(_GAPI_SW) || defined(_GAPI_GU) || defined(_GAPI_TA)
                 lighting = LOW;
             #else
                 lighting = value;
@@ -320,7 +327,7 @@ namespace Core {
             }
 
             void setShadows(Quality value) {
-            #if defined(_GAPI_SW) || defined(_GAPI_GU)
+            #if defined(_GAPI_SW) || defined(_GAPI_GU) || defined(_GAPI_TA)
                 shadows = LOW;
             #else
                 shadows = value;
@@ -328,7 +335,7 @@ namespace Core {
             }
 
             void setWater(Quality value) {
-            #if defined(_GAPI_SW) || defined(_GAPI_GU)
+            #if defined(_GAPI_SW) || defined(_GAPI_GU) || defined(_GAPI_TA)
                 water = LOW;
             #else
                 if (value > LOW && !(support.texFloat || support.texHalf))
@@ -729,6 +736,8 @@ namespace Core {
     #include "gapi/gxm.h"
 #elif _GAPI_VULKAN
     #include "gapi/vk.h"
+#elif _GAPI_TA
+    #include "gapi/ta.h"
 #endif
 
 #include "texture.h"
@@ -993,6 +1002,11 @@ namespace Core {
         settings.detail.setLighting (Core::Settings::LOW);
         settings.detail.setShadows  (Core::Settings::LOW);
         settings.detail.setWater    (Core::Settings::LOW);
+    #endif
+
+    #ifdef _OS_DC
+        settings.audio.reverb = false;
+        settings.audio.music = false;
     #endif
 
         memset(&active, 0, sizeof(active));

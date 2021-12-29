@@ -81,6 +81,20 @@ namespace UI {
 
     enum Align  { aLeft, aRight, aCenter, aCenterV };
 
+#ifdef __DC__
+    inline int charRemap(char c) {
+        if (isCyrillic(c)) {
+            return '?';
+        }
+
+        if (c < 11)
+            return c + 81;
+        if (c < 16)
+            return c + 91;
+        ASSERT(c >= 32)
+        return char_map[c - 32];
+    }
+#else
     inline int charRemap(char c) {
         if (isCyrillic(c)) {
             return char_map[RU_GLYPH_START + (c - 'À')];
@@ -93,6 +107,7 @@ namespace UI {
         ASSERT(c >= 32)
         return char_map[c - 32];
     }
+#endif
 
     inline bool skipChar(char c) {
         return c == '~' || c == '$' || c == '(' || c == ')' || c == '|' || c == '}' || c == '*' || c == '{' || c == '+';

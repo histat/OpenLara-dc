@@ -255,9 +255,25 @@ enum StringID {
 #ifdef _XBOX // TODO: illegal escape sequence
     #define STR_RUSSIAN "Russian"
 #else
-    #define STR_RUSSIAN "–ÛÒÒÍË{Ë"
+    #define STR_RUSSIAN "√ê√≥√±√±√™√®{√®"
 #endif
 
+#ifdef __DC__
+#define STR_LANGUAGES \
+      "English"       \
+    , "Fran|cais"     \
+    , "Deutsch"       \
+    , "Espa+nol"      \
+    , "Italiano"      \
+    , "Polski"        \
+    , "Portugu(es"    \
+    , "Russian"       \
+    , "Japanese"      \
+    , "Greek"         \
+    , "Suomi"         \
+    , "{Cesky"        \
+    , "Chinese"
+#else
 #define STR_LANGUAGES \
       "English"       \
     , "Fran|cais"     \
@@ -272,6 +288,7 @@ enum StringID {
     , "Suomi"         \
     , "{Cesky"        \
     , "\x11\x02\x8A\x02\x6C\x01\x54\x03\x02\xFF\xFF"
+#endif
 
 #define LANG_PREFIXES "_EN", "_FR", "_DE", "_ES", "_IT", "_PL", "_PT", "_RU", "_JA", "_GR", "_FI", "_CZ", "_CN"
 
@@ -314,12 +331,42 @@ const char *helpText =
 #include "lang/it.h"
 #include "lang/pl.h"
 #include "lang/pt.h"
+#ifdef __DC__
+const char *STR_RU[] = { 0 };
+
+inline bool isCyrillic(char c) {
+  return false;
+}
+
+inline char remapCyrillic(char c) {
+  return c;
+}
+
+#define JA_GLYPH_COUNT 0
+#define JA_GLYPH_BASE 0
+
+const char *STR_JA[] = { 0 };
+const uint8 JA_GLYPH_WIDTH[] = { 0 };
+
+#define GR_GLYPH_COUNT 0
+#define GR_GLYPH_BASE 0
+const char *STR_GR[] = { 0 };
+
+const uint8 GR_GLYPH_WIDTH[] = { 0 };
+
+#else
 #include "lang/ru.h"
 #include "lang/ja.h"
 #include "lang/gr.h"
+#endif
 #include "lang/fi.h"
 #include "lang/cz.h"
+#ifdef __DC__
+#define CN_GLYPH_COUNT 0
+const char *STR_CN[] = { 0 };
+#else
 #include "lang/cn.h"
+#endif
 
 char **STR = NULL;
 

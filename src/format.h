@@ -3225,6 +3225,13 @@ namespace TR {
             }
         #endif
 
+        #ifdef _GAPI_TA
+            ASSERT((version & VER_TR1_PSX) == VER_TR1_PSX);
+            if ((version & VER_TR1_PSX) != VER_TR1_PSX) {
+                return;
+            }
+        #endif
+
             switch (version) {
                 case VER_TR1_PC   : loadTR1_PC  (stream); break;
                 case VER_TR1_PSX  : loadTR1_PSX (stream); break;
@@ -3233,7 +3240,9 @@ namespace TR {
                 case VER_TR2_PSX  : loadTR2_PSX (stream); break;
                 case VER_TR3_PC   : loadTR3_PC  (stream); break;
                 case VER_TR3_PSX  : loadTR3_PSX (stream); break;
+            #ifdef USE_INFLATE
                 case VER_TR4_PC   : loadTR4_PC  (stream); break;
+            #endif
                 case VER_TR4_PSX  : loadTR4_PSX (stream); break;
                 case VER_TR4_SDC  : loadTR4_SDC (stream); break;
                 case VER_TR5_PC   : loadTR5_PC  (stream); break;
@@ -3609,6 +3618,7 @@ namespace TR {
             readCameraFrames(stream);
         }
 
+    #ifdef USE_INFLATE
         void loadTR4_PC (Stream &stream) {
             uint16 roomTilesCount, objTilesCount, bumpTilesCount;
             uint32 sizeD, sizeC, sizeR;
@@ -3686,6 +3696,7 @@ namespace TR {
                 soundDataSize += sizeC;
             }
         }
+    #endif
 
         void loadTR4_PSX (Stream &stream) {
 
