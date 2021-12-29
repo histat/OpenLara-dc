@@ -15,6 +15,13 @@
 
 extern void LaunchMenu();
 
+#ifdef NOSERIAL
+void dcExit()
+{
+  (*(void(**)(int))0x8c0000e0)(0);
+}
+#endif
+
 void pvr_set_bg_color(float r, float g, float b) {
     int ir, ig, ib;
     unsigned int color;
@@ -663,3 +670,4 @@ void LaunchMenu() {
   pvr_mem_free(font_tex);
   return;
 }
+
