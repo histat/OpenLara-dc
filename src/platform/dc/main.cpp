@@ -434,13 +434,8 @@ int main()
 
     sndFree();
     Game::deinit();
-
-#ifndef NOSERIAL
-    dcExit();
-#else
-    (*(void(**)(int))0x8c0000e0)(0);
-#endif
     
+    dcExit();
     return 0;
 }
 
