@@ -77,7 +77,7 @@ cdi: dist
 	cdi4dc TMP.ISO 'OpenLara_dc_$(shell date '+%Y%m%d').CDI'
 
 rel:
-	zip 'OpenLara_dc_$(shell date '+%Y%m%d').CDI' OpenLara_dc.zip
+	p7zip 'OpenLara_dc_$(shell date '+%Y%m%d').CDI'
 
 demul:
 	/mnt/c/opt/demul/demul.exe -run=dc -image=TEST.CDI
