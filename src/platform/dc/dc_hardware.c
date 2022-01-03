@@ -245,8 +245,6 @@ int gettimeofday (struct timeval *tv, void *tz)
 #define TA_LIST_ENABLE_DEFAULT (TA_LIST_OPAQUEPOLY|TA_LIST_TRANSPOLY)
 //#define TA_LIST_ENABLE_DEFAULT (TA_LIST_OPAQUEPOLY|TA_LIST_OPAQUEMOD|TA_LIST_TRANSPOLY|TA_LIST_TRANSMOD)
 
-#define FAR_Z  0.0f
-
 static void dc_reset_target()
 {
   int i;
@@ -255,15 +253,12 @@ static void dc_reset_target()
     unsigned int i;
   } zclip;
   
-  zclip.f = FAR_Z;
-  
   for(i=0; i<2; i++) {
     struct ta_buffers *b = &ta_buffers[i];
 #ifdef USE_AA
     b->ta_tilew = (640*2)/32;
 #endif
     b->ta_lists = TA_LIST_ENABLE_DEFAULT;
-    b->ta_zclip = zclip.i & ~0x07;
   }
   
   ta_init_renderstate();
@@ -304,7 +299,6 @@ void dc_init_hardware()
   *(volatile unsigned int*)(0xa05f80e4) = 320 >> 5; //for stride
   pvr_set_bg_color(0.0, 0.0, 0.0);
 
-  
   /* Init primitive buffer */
   primitive_buffer_init(0, 0, -1);
   //primitive_buffer_init(1, &prim_buffer[256 * 1024 * 0], 256 * 1024);

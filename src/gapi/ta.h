@@ -110,7 +110,7 @@ namespace GAPI {
         }
 
         if (DepthTestEnable) {
-	  m_PvrContext.depth.comparison = PVR_DEPTHCMP_GEQUAL;
+	  m_PvrContext.depth.comparison = PVR_DEPTHCMP_GREATER;
         } else {
 	  m_PvrContext.depth.comparison = PVR_DEPTHCMP_ALWAYS;
         }
