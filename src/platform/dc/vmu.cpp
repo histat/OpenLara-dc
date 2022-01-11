@@ -42,6 +42,7 @@ static void conv_lcd_icon(unsigned char *bit, const unsigned char *in)
     unsigned char v;
     unsigned int b = *src++;
     v = 0;
+    *--dst = 0xff;
     for (j= 0; j<4; j++) {
       for (x=0; x<8; x++) {
 	v <<= 1;
@@ -50,7 +51,6 @@ static void conv_lcd_icon(unsigned char *bit, const unsigned char *in)
       }
       *--dst = v;
     }
-    *--dst = 0xff;
     *--dst = 0xff;
   }
 }
