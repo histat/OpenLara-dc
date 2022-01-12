@@ -591,7 +591,7 @@ void LaunchMenu() {
   pvr_poly_compile(&hdr1, &cxt);
   //*((volatile unsigned int *)(void *)0xa05f8040) = 0xFFFFFF;
 
-  frame = 64;
+  frame = 32;
 
   int lid = 0;
   for (;;) {
@@ -604,7 +604,7 @@ void LaunchMenu() {
     draw_banner(&hdr0, w, h);
     pvr_list_finish();
     pvr_list_begin(PVR_LIST_TR_POLY);
-    if (frame & 64) {
+    if (frame & 32) {
       draw_poly_strf(&hdr1, 0, 400, 1.0, 1.0, 1.0, 1.0, "INSERT GAME CD");
     }
     pvr_list_finish();
@@ -627,7 +627,7 @@ void LaunchMenu() {
     }
   }
 
-  frame = 64;
+  frame = 32;
   for(;;) {
     usleep(20000);
     int res = poll_input();
@@ -637,7 +637,7 @@ void LaunchMenu() {
     draw_banner(&hdr0, w, h);
     pvr_list_finish();
     pvr_list_begin(PVR_LIST_TR_POLY);
-    if (frame & 64) {
+    if (frame & 32) {
       draw_poly_strf(&hdr1, 0, 400, 1.0, 1.0, 1.0, 1.0, "PRESS START");
     }
     pvr_list_finish();

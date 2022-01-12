@@ -74,9 +74,7 @@ namespace GAPI {
         TRUE = true
     };
 
-    void ReCompileHeader() {
-
-        pvr_poly_hdr_t hdr;
+    void ReCompileHeader(pvr_poly_hdr_t *dst) {
 
 	//m_PvrContext.txr.enable = PVR_TEXTURE_DISABLE;
 
@@ -117,9 +115,7 @@ namespace GAPI {
 
         m_PvrContext.gen.culling = CullMode;
 
-        pvr_poly_compile(&hdr, &m_PvrContext);
-
-        primitive_header((void *)&hdr, 32);
+        pvr_poly_compile(dst, &m_PvrContext);
     }
 
 // Shader
@@ -687,7 +683,11 @@ namespace GAPI {
         int vcount = 0;
         polygon_vertex_t vertex_buffer[4];
 
-        ReCompileHeader();
+	pvr_poly_hdr_t hdr;
+
+        ReCompileHeader(&hdr);
+
+	primitive_header((void *)&hdr, 32);
 
 	//*((volatile unsigned int *)(void *)0xa05f8040) = 0x000000;
         

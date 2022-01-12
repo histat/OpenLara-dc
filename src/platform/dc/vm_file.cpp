@@ -9,11 +9,16 @@
 #define MAX_SIZE 128*1024
 
 static struct {
-	int used;
+	int flag;
 	VMFILE _iob;
 	char _buffer[MAX_SIZE];
 } fh[MAX_FILES];
 
+
+enum {
+  O_READ = 1,
+  O_WRITE = 2,
+};
 
 // ---
 
@@ -26,13 +31,12 @@ VMFILE *vm_fileopen(const char *fname, const char *mode)
   int i;
   
   for (i=0; i<MAX_FILES; i++)
-    if(fh[i].used == 0)
+    if(fh[i].flag == 0)
       break;
   
   if (i>=MAX_FILES)
     return NULL;
   
-  fh[i].used = 1;
   memset(fh[i]._buffer, 0, MAX_SIZE);
   char *_buffer = fh[i]._buffer;
   
@@ -52,6 +56,8 @@ VMFILE *vm_fileopen(const char *fname, const char *mode)
       goto _exit;
     }
 
+    fh[i].flag = O_READ;
+
     cnt = size;
     
   } else if (!strncmp(mode, "wb", 2)) {
@@ -61,6 +67,8 @@ VMFILE *vm_fileopen(const char *fname, const char *mode)
       printf("Create %s", fname);
 #endif
     }
+
+    fh[i].flag = O_WRITE;
 
   } else if (!strncmp(mode, "r+", 2)) {
 
@@ -75,6 +83,7 @@ VMFILE *vm_fileopen(const char *fname, const char *mode)
       goto _exit;
     }
     
+    fh[i].flag = O_READ;
     cnt = size;
     
   } else {
@@ -97,7 +106,7 @@ VMFILE *vm_fileopen(const char *fname, const char *mode)
   
   return ret;
 _exit:
-  fh[i].used = 0;
+  fh[i].flag = 0;
   return NULL;
 }
 
@@ -105,7 +114,7 @@ void vm_fclose(VMFILE *fp)
 {
   int i;
   
-  if (!fp->_cnt)
+  if (fh[fp->_fd].flag != O_WRITE)
     goto _exit;
   
   if (fp->_vm > 0)
@@ -130,7 +139,7 @@ void vm_fclose(VMFILE *fp)
 #endif
   }
 _exit:
-  fh[fp->_fd].used = 0;
+  fh[fp->_fd].flag = 0;
   return;
 }
 
