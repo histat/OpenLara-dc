@@ -486,6 +486,21 @@ typedef struct vec3f {
         x = __x; y = __y; z = __z; w = __w; \
     }
 
+#define vec3f_length(x, y, z, w) { \
+        register float __x __asm__("fr0") = (x); \
+        register float __y __asm__("fr1") = (y); \
+        register float __z __asm__("fr2") = (z); \
+        register float __w __asm__("fr3"); \
+        __asm__ __volatile__( \
+                              "fldi0 fr3\n" \
+                              "fipr  fv0,fv0\n" \
+                              "fsqrt fr3\n" \
+                              : "+f" (__w) \
+                              : "f" (__x), "f" (__y), "f" (__z), "f" (__w) \
+                            ); \
+        w = __w; \
+    }
+
 typedef float matrix_t[4][4];
 
 #if defined(__cplusplus) || defined(c_plusplus)

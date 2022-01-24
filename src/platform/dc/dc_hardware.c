@@ -240,9 +240,9 @@ int gettimeofday (struct timeval *tv, void *tz)
   return 0;
 }
 
-//#define TA_LIST_ENABLE_DEFAULT (TA_LIST_OPAQUEPOLY|TA_LIST_TRANSPOLY|TA_LIST_PUNCHTHROUGH)
+#define TA_LIST_ENABLE_DEFAULT (TA_LIST_OPAQUEPOLY|TA_LIST_TRANSPOLY|TA_LIST_PUNCHTHROUGH)
 //#define TA_LIST_ENABLE_DEFAULT (TA_LIST_OPAQUEPOLY|TA_LIST_OPAQUEMOD|TA_LIST_TRANSPOLY)
-#define TA_LIST_ENABLE_DEFAULT (TA_LIST_OPAQUEPOLY|TA_LIST_TRANSPOLY)
+//#define TA_LIST_ENABLE_DEFAULT (TA_LIST_OPAQUEPOLY|TA_LIST_TRANSPOLY)
 //#define TA_LIST_ENABLE_DEFAULT (TA_LIST_OPAQUEPOLY|TA_LIST_OPAQUEMOD|TA_LIST_TRANSPOLY|TA_LIST_TRANSMOD)
 
 static void dc_reset_target()
@@ -295,16 +295,21 @@ void dc_init_hardware()
 
   dc_reset_target();
 
-  *(volatile unsigned int *)(0xa05f8108) = PVR_PAL_ARGB4444;
+  //*(volatile unsigned int *)(0xa05f8108) = PVR_PAL_ARGB4444;
   *(volatile unsigned int*)(0xa05f80e4) = 320 >> 5; //for stride
+
   pvr_set_bg_color(0.0, 0.0, 0.0);
+
+  PVR_FSET(PVR_SMALL_CULL, 0.1f);
+
+  PVR_FSET(0x11C, 0.5f);
 
   /* Init primitive buffer */
   primitive_buffer_init(0, 0, -1);
   //primitive_buffer_init(1, &prim_buffer[256 * 1024 * 0], 256 * 1024);
-  primitive_buffer_init(2, &prim_buffer[256 * 1024 * 0], 256 * 1024 * 4);
+  primitive_buffer_init(2, &prim_buffer[256 * 1024 * 0], 256 * 1024 * 1);
   //primitive_buffer_init(3, &prim_buffer[256 * 1024 * 2], 256 * 1024);
-  //primitive_buffer_init(4, &prim_buffer[256 * 1024 * 3], 256 * 1024);
+  primitive_buffer_init(4, &prim_buffer[256 * 1024 * 2], 256 * 1024 * 3);
 
   LaunchMenu();
 
@@ -596,6 +601,8 @@ void LaunchMenu() {
   int lid = 0;
   for (;;) {
     usleep(20000);
+    if(frame > 255)
+      frame = 0;
 
     int res = poll_input();
 
@@ -607,6 +614,8 @@ void LaunchMenu() {
     if (frame & 32) {
       draw_poly_strf(&hdr1, 0, 400, 1.0, 1.0, 1.0, 1.0, "INSERT GAME CD");
     }
+    pvr_list_finish();
+    pvr_list_begin(PVR_LIST_PT_POLY);
     pvr_list_finish();
     ta_end_dlist();
     frame++;
@@ -630,6 +639,9 @@ void LaunchMenu() {
   frame = 32;
   for(;;) {
     usleep(20000);
+    if(frame > 255)
+      frame = 0;
+
     int res = poll_input();
 
     ta_begin_frame();
@@ -640,6 +652,8 @@ void LaunchMenu() {
     if (frame & 32) {
       draw_poly_strf(&hdr1, 0, 400, 1.0, 1.0, 1.0, 1.0, "PRESS START");
     }
+    pvr_list_finish();
+    pvr_list_begin(PVR_LIST_PT_POLY);
     pvr_list_finish();
     ta_end_dlist();
     frame++;
@@ -654,6 +668,8 @@ void LaunchMenu() {
   pvr_list_finish();
   pvr_list_begin(PVR_LIST_TR_POLY);
   draw_poly_strf(&hdr1, 0, 400, 1.0, 1.0, 1.0, 1.0, "WAIT......");
+  pvr_list_finish();
+  pvr_list_begin(PVR_LIST_PT_POLY);
   pvr_list_finish();
   ta_end_dlist();
 

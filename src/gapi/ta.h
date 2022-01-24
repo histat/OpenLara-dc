@@ -13,23 +13,25 @@
 #define PROFILE_LABEL(id, name, label)
 #define PROFILE_TIMING(time)
 
-#define SW_MAX_DIST  (20.0f)
-#define SW_FOG_START (10.0f)
-
 namespace GAPI {
 
     using namespace Core;
 
-    typedef ::Vertex Vertex;
+    struct Vertex {
+        short2 texCoord;
+        ubyte4 color;
+        short4 normal;
+        short3 coord;
+    };
 
-    uint8 ambient;
+    vec3 ambient;
     int32 lightsCount;
 
-    struct LightSW {
-        uint32 intensity;
-        vec3   pos;
-        float  radius;
-    } lights[MAX_LIGHTS], lightsRel[MAX_LIGHTS];
+   struct LightPVR {
+     vec3  color;
+     vec3  pos;
+     float att;
+   } lights[MAX_LIGHTS];
 
     #define ARGB1555(r,g,b,a)	( (((r)>>3)<<10) | (((g)>>3)<<5) |((b)>>3) | (((a)&0x80)<<8) )
     #define ARGB4444(r,g,b,a)	( (((((a)&0xf0)<<8) | ((r)>>4))<<8) | ((g)&0xf0) | ((b)>>4) )
@@ -79,20 +81,21 @@ namespace GAPI {
 	//m_PvrContext.txr.enable = PVR_TEXTURE_DISABLE;
 
         if(AlphaBlendEnable || AlphaTestEnable) {
-            m_PvrContext.list_type = PVR_LIST_TR_POLY;
-            m_PvrContext.gen.alpha = PVR_ALPHA_ENABLE;   
-            m_PvrContext.txr.alpha = PVR_TXRALPHA_ENABLE;
-            m_PvrContext.txr.env = PVR_TXRENV_MODULATEALPHA;
+	  m_PvrContext.list_type = PVR_LIST_TR_POLY;
+	  m_PvrContext.gen.alpha = PVR_ALPHA_ENABLE;
+	  m_PvrContext.txr.alpha = PVR_TXRALPHA_ENABLE;
+	  m_PvrContext.txr.env = PVR_TXRENV_MODULATEALPHA;
 
-            if(AlphaBlendEnable) {
-                m_PvrContext.blend.src = AlphaBlendSrc;
-                m_PvrContext.blend.dst = AlphaBlendDst;
-            } else {
-                m_PvrContext.blend.src = PVR_BLEND_SRCALPHA;
-                m_PvrContext.blend.dst = PVR_BLEND_INVSRCALPHA;
-            }
+	  if(AlphaBlendEnable) {
+	    m_PvrContext.blend.src = AlphaBlendSrc;
+	    m_PvrContext.blend.dst = AlphaBlendDst;
+	  } else {
+	    m_PvrContext.list_type = PVR_LIST_PT_POLY;
+	    m_PvrContext.blend.src = PVR_BLEND_SRCALPHA;
+	    m_PvrContext.blend.dst = PVR_BLEND_INVSRCALPHA;
+	  }
 
-        } else {
+	} else {
             m_PvrContext.list_type = PVR_LIST_OP_POLY;
             m_PvrContext.gen.alpha = PVR_ALPHA_DISABLE;
             m_PvrContext.blend.src = PVR_BLEND_ONE;
@@ -131,11 +134,7 @@ namespace GAPI {
     static const struct FormatDesc {
       int bpp, textureFormat;
     } formats[FMT_MAX] = {
-#if 0
       {  8, PVR_TXRFMT_ARGB4444|PVR_TXRFMT_NONTWIDDLED}, // LUMINANCE
-#else
-      {  8, TA_PAL8BPP_TWID | PVR_TXRFMT_8BPP_PAL(0)}, // LUMINANCE
-#endif
       { 32, PVR_TXRFMT_ARGB1555|PVR_TXRFMT_NONTWIDDLED}, // RGBA
       { 16, PVR_TXRFMT_RGB565|PVR_TXRFMT_NONTWIDDLED}, // RGB16
       { 16, PVR_TXRFMT_ARGB1555|PVR_TXRFMT_NONTWIDDLED}, // RGBA16
@@ -232,11 +231,8 @@ namespace GAPI {
 
             int size = 0;
 
-	    if (desc.bpp == 8) {
-	      size = width * height;
-	    } else {
-	      size = width * height * 2;
-	    }
+	    size = width * height * 2;
+
 	    memory = pvr_mem_malloc(size);
 	    if (memory == NULL) {
 	      LOG("Unable to create %dx%dx%d \n", width, height, size);
@@ -338,17 +334,13 @@ namespace GAPI {
 	    }
 
             if (desc.bpp == 8) {
-#if 0
 	      int n = origWidth * origHeight;
 	      uint16 *dst = (uint16 *)memory;
 	      uint8 *src = (uint8 *)data;
 	      while(n--) {
-		uint16 c = *src++;
+		uint8 c = *src++;
 		*dst++ = LUMINANCE(c);
 	      }
-#else
-	      twiddle((uint8 *)memory, (const uint8 *)data, width, height, 8);
-#endif
             } else if (desc.bpp == 16 && fmt == 2) {
 	      int n = origWidth * origHeight;
 	      uint16 *dst = (uint16 *)memory;
@@ -452,9 +444,19 @@ namespace GAPI {
             if (indices) {
                 memcpy(iBuffer, indices, iCount * sizeof(indices[0]));
             }
-        
             if (vertices) {
-                memcpy(vBuffer, vertices, vCount * sizeof(vertices[0]));
+                ::Vertex *src = vertices;
+                Vertex   *dst = vBuffer;
+
+                for (int i = 0; i < vCount; i++) {
+                    dst->texCoord = short2(src->texCoord.x, src->texCoord.y);
+                    dst->color    = ubyte4(src->light.z, src->light.y, src->light.x, src->light.w); //color;
+                    dst->normal   = src->normal;
+                    dst->coord    = src->coord;
+
+                    dst++;
+                    src++;
+                }
             }
         }
 
@@ -498,11 +500,6 @@ namespace GAPI {
 
 	scaleX = 1.0f;
 	scaleY = 1.0f;
-
-	unsigned int (*pal)[4][256] = (unsigned int (*)[4][256])0xa05f9000;
-	for (int n = 0; n < 256; n++) {
-	  (*pal)[0][n] = LUMINANCE(n);
-	}
 
         pvr_poly_cxt_txr(&m_PvrContext, PVR_LIST_OP_POLY, PVR_TXRFMT_ARGB1555, 8, 8, 0, 0);
 
@@ -556,19 +553,21 @@ namespace GAPI {
         float near = 0.0f;
         float far = 1.0f;
 
-	mat4 matrix;
+	//mat4 matrix;
 
-	matrix.identity();
-
-	matrix.e00 = w;
-        matrix.e11 = -h;
-        matrix.e22 = (far - near); //(far - near) * 0.5f;
-        matrix.e23 = near; //(far + near) * 0.5f;
-        matrix.e03 = v.x + w;
-        matrix.e13 = v.y + h;
-
-	load_matrix(&matrix.m);
+	clear_matrix();
 	save_matrix(&m_Matrix[0].m);
+	//matrix.identity();
+
+	m_Matrix[0].e00 = w;
+        m_Matrix[0].e11 = -h;
+        m_Matrix[0].e22 = (far - near); //(far - near) * 0.5f;
+        m_Matrix[0].e23 = near; //(far + near) * 0.5f;
+        m_Matrix[0].e03 = v.x + w;
+        m_Matrix[0].e13 = v.y + h;
+
+	//load_matrix(&matrix.m);
+	//save_matrix(&m_Matrix[0].m);
     }
 
     void setScissor(const short4 &s) {}
@@ -623,56 +622,82 @@ namespace GAPI {
     }
 
     void setViewProj(const mat4 &mView, const mat4 &mProj) {
-#if 0
+      /*
       load_matrix(&mProj.m);
       save_matrix(&m_Matrix[1].m);
 
       load_matrix(&mView.m);
       save_matrix(&m_Matrix[2].m);
-#else
+      */
+
       load_matrix(&mProj.m);
       apply_matrix(&mView.m);
       save_matrix(&m_Matrix[1].m);
-#endif
     }
 
     void updateLights(vec4 *lightPos, vec4 *lightColor, int count) {
 
-      ambient = clamp(int32(active.material.y * 255), 0, 255);
+      ambient = vec3(Core::active.material.y);
 
       lightsCount = 0;
       for (int i = 0; i < count; i++) {
 	if (lightColor[i].w >= 1.0f) {
 	  continue;
 	}
-	LightSW &light = lights[lightsCount++];
-	vec4 &c = lightColor[i];
-	light.intensity = uint32(((c.x + c.y + c.z) / 3.0f) * 255.0f);
-	light.pos    = lightPos[i].xyz();
-	light.radius = lightColor[i].w;
+	LightPVR &light = lights[lightsCount++];
+	light.color = lightColor[i].xyz();
+	light.pos   = lightPos[i].xyz();
+	light.att   = lightColor[i].w * lightColor[i].w;
       }
     }
 
-    void applyLighting(int32 &result, const Vertex &vertex, float depth) {
-        vec3 coord  = vec3(vertex.coord.x);
-        vec3 normal = vec3(vertex.normal.x).normal();
-        float lighting = 0.0f;
-        for (int i = 0; i < lightsCount; i++) {
-            LightSW &light = lightsRel[i];
-            vec3 dir = (light.pos - coord) * light.radius;
-            float att = dir.length2();
-            float lum = normal.dot(dir / sqrtf(att));
-            lighting += (max(0.0f, lum) * max(0.0f, 1.0f - att)) * light.intensity;
-        }
+    uint32 apply_lighting(const Vertex &vertex)
+    {
+      const uint8 *argb = &vertex.color.x;
+      vec3 result = vec3(0.0f);
 
-        lighting += result;
+      //load_matrix(&mModel.m);
+      load_matrix(&m_Matrix[3].m);
 
-	depth -= SW_FOG_START;
-        if (depth > 0.0f) {
-	    lighting *= clamp(1.0f - depth / (SW_MAX_DIST - SW_FOG_START), 0.0f, 1.0f);
-        }
+      vec3 coord  = vec3(vertex.coord.x);
+      //vec3 normal = vec3(vertex.normal.x).normal();
+      vec3 normal = vec3(vertex.normal.x);
+      vec3f_normalize(normal.x, normal.y, normal.z);
 
-	result = int32(lighting);
+      for (int i = 0; i < lightsCount; i++) {
+	LightPVR &light = lights[i];
+	//vec3 invL = (mModelInv * vec4(lightV, 1.0f)).xyz();
+	//vec3f_normalize(invL.x, invL.y, invL.z);
+
+	vec3 vpos;
+	mat_trans_normal3_nomod(coord.x, coord.y, coord.z, vpos.x, vpos.y, vpos.z);
+	//vec3 vpos = (mModel * vec4(coord, 1.0)).xyz();
+	//vec3 vpos = (mModelInv * vec4(coord, 1.0f)).xyz();
+	vec3 lightV = light.pos - vpos;
+	vec3f_normalize(lightV.x, lightV.y, lightV.z);
+
+	float diff;
+	vec3f_dot(normal.x, normal.y, normal.z, lightV.x, lightV.y, lightV.z, diff);
+	float d;
+	vec3f_length(lightV.x, lightV.y, lightV.z, d);
+	float att = 1.0f / (1.0f + light.att * d * d);
+	vec3 diffuse = light.color * max(0.0f, diff);
+	result += ambient * att + diffuse * att;
+      }
+
+      load_matrix(&m_Matrix[2].m);
+
+      uint8 R, G, B, A;
+      R = clamp(int(result.x * argb[0]), 0, 255);
+      G = clamp(int(result.y * argb[1]), 0, 255);
+      B = clamp(int(result.z * argb[2]), 0, 255);
+      A = argb[3];
+      /* RGB might be wrong */
+      R = (R==0)? 100: R;
+      G = (G==0)? 100: G;
+      B = (B==0)? 100: B;
+
+      return A << 24 | R << 16 | G << 8 | B;
     }
 
     void DrawMesh(const Index *indices, const Vertex *vertices, int iCount) {
@@ -681,7 +706,7 @@ namespace GAPI {
         bool isTriangle = false;
 
         int vcount = 0;
-        polygon_vertex_t vertex_buffer[4];
+        polygon_vertex_t vertex_buffer[4] __attribute__((aligned(32)));
 
 	pvr_poly_hdr_t hdr;
 
@@ -690,7 +715,9 @@ namespace GAPI {
 	primitive_header((void *)&hdr, 32);
 
 	//*((volatile unsigned int *)(void *)0xa05f8040) = 0x000000;
-        
+	//vertex_buffer[0].flags = vertex_buffer[1].flags = vertex_buffer[2].flags = vertex_buffer[3].flags = PVR_CMD_VERTEX;
+	vertex_buffer[0].offset.color = vertex_buffer[1].offset.color = vertex_buffer[2].offset.color = vertex_buffer[3].offset.color = 0;
+
         for (int i = 0; i < iCount; i++) {
             const Index  index   = indices[i];
             const Vertex &vertex = vertices[index];
@@ -713,43 +740,27 @@ namespace GAPI {
             mat_trans_single3_nomod(in[0], in[1], in[2], out[0], out[1], out[2]);
             //printf("[%d] %f %f %f %s\n",vIndex,out[0],out[1],out[2],isTriangle?"Tris":"Quad");
 
-            vertex_buffer[vcount].flags = PVR_CMD_VERTEX;
             vertex_buffer[vcount].u = vertex.texCoord.x * 1.0f / 32767.0f;
             vertex_buffer[vcount].v = vertex.texCoord.y * 1.0f / 32767.0f;
 
-            const uint8 *argb = &vertex.light.x;
-            //vertex_buffer[vcount].base.color = ARGB8888(argb[0],argb[1],argb[2],argb[3]);
-
             if (lightsCount) {
-	      int32 result = (argb[0] * ambient) / 255;
-
-	      applyLighting(result, vertex, out[2]);
-
-	      uint8 l;
-
-	      l = clamp(result, 64, 255);
-
-	      vertex_buffer[vcount].base.color = ARGB8888( l, l, l, argb[3]);
-
-	      vertex_buffer[vcount].offset.color = 0;
+	      vertex_buffer[vcount].base.color = apply_lighting(vertex);
             } else {
-
-	      vertex_buffer[vcount].base.color = ARGB8888(argb[0],argb[1],argb[2],argb[3]);
-	      vertex_buffer[vcount].offset.color = 0;
+	      vertex_buffer[vcount].base.color = vertex.color.value;
             }
 
             vcount++;
 
             if (isTriangle && vIndex == 3) {
-	      /*
-		 0 ---- 1
-                 |     /
-		 |    /
-		 |   /
-		 |  /
-		 | /
-		 2
-	       */
+	        /*
+		  0 ---- 1
+                  |     /
+		  |    /
+		  |   /
+		  |  /
+		  | /
+		  2
+	        */
                 int face_list[] = {0, 1, 2};
                 //*((volatile unsigned int *)(void *)0xa05f8040) = 0xff0000;
 		primitive_nclip_polygon((pvr_vertex_t*)vertex_buffer, face_list, sizeof(face_list)/sizeof(int));
@@ -757,15 +768,15 @@ namespace GAPI {
                 vcount = 0;
                 vIndex = 0;
             } else if (vIndex == 6) {
-	      /*
-		 0 ---- 1
-                 |     /|
-		 |    / |
-		 |   /  |
-		 |  /   |
-		 | /    |
-		 2 -----3
-	       */
+	        /*
+		  0 ---- 1
+		  |     /|
+		  |    / |
+		  |   /  |
+		  |  /   |
+		  | /    |
+		  2 -----3
+		*/
                 int face_list[] = {4, 0, 1, 3, 2};
                 //*((volatile unsigned int *)(void *)0xa05f8040) = 0x00ff00;
                 primitive_nclip_polygon_strip((pvr_vertex_t*)vertex_buffer, face_list, sizeof(face_list)/sizeof(int));
@@ -774,43 +785,36 @@ namespace GAPI {
                 vIndex = 0;
             }
         }
-
-    }
-
-    void transformLights() {
-        memcpy(lightsRel, lights, sizeof(LightSW) * lightsCount);
-
-        mat4 mModelInv = mModel.inverseOrtho();
-        for (int i = 0; i < lightsCount; i++) {
-            lightsRel[i].pos = mModelInv * lights[i].pos;
-        }
     }
 
     void DIP(Mesh *mesh, const MeshRange &range) {
         mat4 m = mModel;
-
-#if 0
+	/*
         float scale[4][4] = {0.0f};
 
         scale[0][0] = 2.0f;
         scale[1][1] = 1.0f;
         scale[2][2] = 1.0f;
         scale[3][3] = 1.0f;
-#endif
+      */
 
-        transformLights();
-
-#if 0
-        load_matrix(&m_Matrix[0].m);
-        apply_matrix(&mViewProj.m);
-        apply_matrix(&mModel.m);
-#else
-
+      /*
         load_matrix(&m_Matrix[0].m);
         apply_matrix(&m_Matrix[1].m);
         apply_matrix(&mModel.m);
+      */
 
-#endif
+	//load_matrix(&mModel.m);
+	load_matrix(&m.m);
+	save_matrix(&m_Matrix[3].m);
+
+        load_matrix(&m_Matrix[0].m);
+        apply_matrix(&m_Matrix[1].m);
+        //apply_matrix(&m.m);
+	apply_matrix(&m_Matrix[3].m);
+
+	save_matrix(&m_Matrix[2].m);
+
 	DrawMesh(mesh->iBuffer + range.iStart, mesh->vBuffer + range.vStart, range.iCount);
 
     }
