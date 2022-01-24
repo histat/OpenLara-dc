@@ -1277,8 +1277,13 @@ namespace TR {
     bool checkWebDub(Version version, int track) {
         if (getSubs(version, track) != STR_EMPTY) {
             int lang = Core::settings.audio.language + STR_LANG_EN;
+#ifdef __DC__
+            return lang == STR_LANG_EN || lang == STR_LANG_DE || lang == STR_LANG_FR;
+        }
+#else
             return lang == STR_LANG_EN || lang == STR_LANG_DE || lang == STR_LANG_FR || lang == STR_LANG_RU || lang == STR_LANG_JA;
         }
+#endif
         return false;
     }
 

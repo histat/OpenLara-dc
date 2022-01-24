@@ -83,10 +83,6 @@ namespace UI {
 
 #ifdef __DC__
     inline int charRemap(char c) {
-        if (isCyrillic(c)) {
-            return '?';
-        }
-
         if (c < 11)
             return c + 81;
         if (c < 16)
@@ -160,12 +156,19 @@ namespace UI {
         TR::gSpriteTexturesCount = level.spriteTexturesCount;
     }
 
+#ifdef __DC__
+    bool isWideCharStart(char c) {
+        int lang = Core::settings.audio.language + STR_LANG_EN;
+        return false;
+    }
+#else
     bool isWideCharStart(char c) {
         int lang = Core::settings.audio.language + STR_LANG_EN;
         if (lang == STR_LANG_JA || lang == STR_LANG_GR || lang == STR_LANG_CN)
             return c == '\x11';
         return false;
     }
+#endif
 
     uint16 getWideCharGlyph(const char *text) {
         uint16 index = uint8(*text) << 8;
@@ -179,6 +182,7 @@ namespace UI {
 
     uint16 getWideCharGlyphWidth(uint16 glyph) {
         int lang = Core::settings.audio.language + STR_LANG_EN;
+#ifndef __DC__
         if (lang == STR_LANG_JA) {
             ASSERT(glyph < JA_GLYPH_COUNT);
             return 16;
@@ -191,15 +195,18 @@ namespace UI {
             ASSERT(glyph < CN_GLYPH_COUNT);
             return 16;
         }
+#endif
         return 1;
     }
 
     int getWideCharGlyphIndex(uint16 glyph) {
         int lang = Core::settings.audio.language + STR_LANG_EN;
         glyph += UI::advGlyphsStart + RU_GLYPH_COUNT;
+#ifndef __DC__
         if (lang == STR_LANG_JA) return glyph; glyph += JA_GLYPH_COUNT;
         if (lang == STR_LANG_GR) return glyph; glyph += GR_GLYPH_COUNT;
         if (lang == STR_LANG_CN) return glyph; glyph += CN_GLYPH_COUNT;
+#endif
         ASSERT(false);
         return glyph;
     }

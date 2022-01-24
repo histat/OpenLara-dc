@@ -25,6 +25,13 @@ enum StringID {
     , STR_QUALITY_LOW
     , STR_QUALITY_MEDIUM
     , STR_QUALITY_HIGH
+#ifdef __DC__
+    , STR_LANG_EN
+    , STR_LANG_FR
+    , STR_LANG_DE
+    , STR_LANG_ES
+    , STR_LANG_IT
+#else
     , STR_LANG_EN
     , STR_LANG_FR
     , STR_LANG_DE
@@ -38,6 +45,7 @@ enum StringID {
     , STR_LANG_FI
     , STR_LANG_CZ
     , STR_LANG_CN
+#endif
     , STR_APPLY
     , STR_GAMEPAD_1
     , STR_GAMEPAD_2
@@ -264,15 +272,7 @@ enum StringID {
     , "Fran|cais"     \
     , "Deutsch"       \
     , "Espa+nol"      \
-    , "Italiano"      \
-    , "Polski"        \
-    , "Portugu(es"    \
-    , "Russian"       \
-    , "Japanese"      \
-    , "Greek"         \
-    , "Suomi"         \
-    , "{Cesky"        \
-    , "Chinese"
+    , "Italiano"
 #else
 #define STR_LANGUAGES \
       "English"       \
@@ -329,47 +329,50 @@ const char *helpText =
 #include "lang/de.h"
 #include "lang/es.h"
 #include "lang/it.h"
-#include "lang/pl.h"
-#include "lang/pt.h"
 #ifdef __DC__
-const char *STR_RU[] = { 0 };
-
-inline bool isCyrillic(char c) {
-  return false;
-}
 
 inline char remapCyrillic(char c) {
   return c;
 }
 
 #define JA_GLYPH_COUNT 0
-#define JA_GLYPH_BASE 0
-
-const char *STR_JA[] = { 0 };
-const uint8 JA_GLYPH_WIDTH[] = { 0 };
-
 #define GR_GLYPH_COUNT 0
 #define GR_GLYPH_BASE 0
-const char *STR_GR[] = { 0 };
-
 const uint8 GR_GLYPH_WIDTH[] = { 0 };
+#define CN_GLYPH_COUNT 0
 
 #else
+#include "lang/pl.h"
+#include "lang/pt.h"
 #include "lang/ru.h"
 #include "lang/ja.h"
 #include "lang/gr.h"
-#endif
 #include "lang/fi.h"
 #include "lang/cz.h"
-#ifdef __DC__
-#define CN_GLYPH_COUNT 0
-const char *STR_CN[] = { 0 };
-#else
 #include "lang/cn.h"
 #endif
 
 char **STR = NULL;
 
+#ifdef __DC__
+void ensureLanguage(int lang) {
+    ASSERT(COUNT(STR_EN) == STR_MAX);
+    ASSERT(COUNT(STR_FR) == STR_MAX);
+    ASSERT(COUNT(STR_DE) == STR_MAX);
+    ASSERT(COUNT(STR_ES) == STR_MAX);
+    ASSERT(COUNT(STR_IT) == STR_MAX);
+
+    lang += STR_LANG_EN;
+
+    switch (lang) {
+        case STR_LANG_FR : STR = (char**)STR_FR; break;
+        case STR_LANG_DE : STR = (char**)STR_DE; break;
+        case STR_LANG_ES : STR = (char**)STR_ES; break;
+        case STR_LANG_IT : STR = (char**)STR_IT; break;
+        default          : STR = (char**)STR_EN; break;
+    }
+}
+#else
 void ensureLanguage(int lang) {
     ASSERT(COUNT(STR_EN) == STR_MAX);
     ASSERT(COUNT(STR_FR) == STR_MAX);
@@ -403,5 +406,6 @@ void ensureLanguage(int lang) {
         default          : STR = (char**)STR_EN; break;
     }
 }
+#endif
 
 #endif

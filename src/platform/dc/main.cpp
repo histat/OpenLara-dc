@@ -3,6 +3,11 @@
 #include <string.h>
 #include <sys/time.h>
 
+#ifdef NOSERIAL
+#undef LOG
+#define LOG(...)
+#endif
+
 #include "game.h"
 
 
@@ -293,7 +298,7 @@ void osWriteSlot(Stream *stream) {
 
 // Input
 bool osJoyReady(int index) {
-    return index == 0;
+  return index == 0;
 }
 
 void osJoyVibrate(int index, float L, float R) {
@@ -350,11 +355,10 @@ void joyUpdate() {
       Input::setJoyDown(JoyCnt, jkY,  (Buttons & DC_PAD::JOY_BTN_Y));
       Input::setJoyDown(JoyCnt, jkLB, (Buttons & DC_PAD::JOY_LTRIGGER));
       Input::setJoyDown(JoyCnt, jkRB, (Buttons & DC_PAD::JOY_RTRIGGER));
-#ifdef DC_PAD_SELECT
-      Input::setJoyDown(JoyCnt, jkStart, (Buttons & DC_PAD::JOY_BTN_START));
-#else
-      Input::setJoyDown(JoyCnt, jkSelect, (Buttons & DC_PAD::JOY_BTN_START));
-#endif
+      if ((Buttons & DC_PAD::JOY_LTRIGGER) != 0)
+	Input::setJoyDown(JoyCnt, jkStart, (Buttons & DC_PAD::JOY_BTN_START));
+      else
+	Input::setJoyDown(JoyCnt, jkSelect, (Buttons & DC_PAD::JOY_BTN_START));
       if ((Buttons & DC_PAD::JOY_BTN_C) != 0)
 	Input::setJoyDown(JoyCnt, jkLB, (Buttons & DC_PAD::JOY_BTN_C));
       if ((Buttons & DC_PAD::JOY_BTN_Z) != 0)
@@ -387,7 +391,6 @@ int checkLanguage(int arg) {
         case 2: str = STR_LANG_DE; break;
         case 4: str = STR_LANG_ES; break;
         case 5: str = STR_LANG_IT; break;
-        case 0: str = STR_LANG_JA; break;
   }
   return str - STR_LANG_EN;
 }
