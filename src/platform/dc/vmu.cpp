@@ -197,13 +197,17 @@ bool save_to_vmu(int unit, const char *filename, const char *buf, int buf_len)
     stamp.second = now_time->tm_sec;
   }
 
+  vmsfs_beep(&info, 1);
+
   if (!vmsfs_create_file(&super, new_filename, &header, lara_icon+sizeof(header.palette), NULL, compressed_buf, compressed_len, &stamp)) {
 #ifndef NOSERIAL
     fprintf(stderr,"%s",vmsfs_describe_error());
 #endif
+    vmsfs_beep(&info, 0);
     return false;
   }
 
+  vmsfs_beep(&info, 0);
   setlcd(&info, lcd_icon);
   
   return true;
