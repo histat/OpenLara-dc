@@ -64,6 +64,12 @@
     }
 #endif
 
+#ifdef _OS_DC
+#ifdef NOSERIAL
+    #undef LOG
+    #define LOG(...)
+#endif
+#endif
 
 #ifdef _OS_PSP
     extern "C" {

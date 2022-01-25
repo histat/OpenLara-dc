@@ -3,11 +3,6 @@
 #include <string.h>
 #include <sys/time.h>
 
-#ifdef NOSERIAL
-#undef LOG
-#define LOG(...)
-#endif
-
 #include "game.h"
 
 
