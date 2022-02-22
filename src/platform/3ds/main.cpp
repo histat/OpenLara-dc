@@ -33,7 +33,7 @@ int osGetTimeMS() {
 }
 
 // backlight
-bool bottomScreenOn = true;
+bool bottomScreenOn = false;
 
 void setBottomScreen(bool enable) {
     gspLcdInit();
@@ -46,10 +46,10 @@ aptHookCookie(cookie);
 void checkAptHook(APT_HookType hook, void *param) {
     if (!bottomScreenOn) {
         switch(hook) {
-            case APTHOOK_ONSUSPEND : setBottomScreen(1);
+            case APTHOOK_ONSUSPEND : setBottomScreen(true);
                 break;
             case APTHOOK_ONRESTORE :
-            case APTHOOK_ONWAKEUP  : setBottomScreen(0);
+            case APTHOOK_ONWAKEUP  : setBottomScreen(false);
                 break;
             default:
                 break;
@@ -97,13 +97,13 @@ void inputUpdate() {
 
     if (down & KEY_TOUCH) {
         bottomScreenOn = !bottomScreenOn;
-        bottomScreenOn ? setBottomScreen(1) : setBottomScreen(0);
+        bottomScreenOn ? setBottomScreen(true) : setBottomScreen(false);
     }
 }
 
 void inputFree() {
     if (!bottomScreenOn)
-        setBottomScreen(1);
+        setBottomScreen(true);
     hidExit();
 }
 
@@ -117,7 +117,6 @@ int           sndBufIndex;
 bool          sndReady;
 
 void sndFill(void *arg) {
-    LOG("thread start\n");
     memset(sndWaveBuf, 0, sizeof(sndWaveBuf));
     sndWaveBuf[0].data_vaddr = sndBuffer + 0;
     sndWaveBuf[0].nsamples   = SND_FRAMES;
@@ -176,7 +175,32 @@ void sndFree() {
     linearFree((uint32*)sndBuffer);
 }
 
+int checkLanguage()
+{
+    uint8 id;
+    CFGU_GetSystemLanguage(&id);
+
+    int str = STR_LANG_EN;
+    switch (id)
+    {
+        case CFG_LANGUAGE_EN : str = STR_LANG_EN; break;
+        case CFG_LANGUAGE_FR : str = STR_LANG_FR; break;
+        case CFG_LANGUAGE_DE : str = STR_LANG_DE; break;
+        case CFG_LANGUAGE_ES : str = STR_LANG_ES; break;
+        case CFG_LANGUAGE_IT : str = STR_LANG_IT; break;
+        case CFG_LANGUAGE_PT : str = STR_LANG_PT; break;
+        case CFG_LANGUAGE_RU : str = STR_LANG_RU; break;
+        case CFG_LANGUAGE_JP : str = STR_LANG_JA; break;
+        case CFG_LANGUAGE_ZH : str = STR_LANG_CN; break;
+    }
+    return str - STR_LANG_EN;
+}
+
 int main() {
+    cfguInit();
+    
+    setBottomScreen(false);
+
     {
         bool isNew3DS;
         APT_CheckNew3DS(&isNew3DS);
@@ -189,9 +213,9 @@ int main() {
     strcpy(saveDir,    "sdmc:/3ds/OpenLara/");
     strcpy(contentDir, "sdmc:/3ds/OpenLara/");
 
-    if(chdir(contentDir) != 0) {
-        return 0;
-    }
+    Stream::init();
+    
+    Core::defLang = checkLanguage();
 
     sndInit();
     inputInit();
@@ -200,16 +224,31 @@ int main() {
 
     Game::init();
 
-    while (aptMainLoop() && !Core::isQuit) {
-        inputUpdate();
+    if (Core::isQuit) {
+        bottomScreenOn = true;
+        setBottomScreen(true);
+        consoleClear();
+        LOG("\n\nCopy the original game content to:\n\n    %s\n\nPress A to exit", contentDir);
+        while (aptMainLoop()) {
+            hidScanInput();
+            u64 mask = hidKeysDown() | hidKeysHeld();
+            if (mask & KEY_A) {
+                break;
+            }
 
-        if (Input::joy[0].down[jkStart])
-            Core::quit();
+            gfxFlushBuffers();
+            gfxSwapBuffers();
+            gspWaitForVBlank();
+        }
+    } else {
+        while (aptMainLoop() && !Core::isQuit) {
+            inputUpdate();
 
-        Game::update();
-        Game::render();
+            Game::update();
+            Game::render();
 
-        GAPI::present();
+            GAPI::present();
+        }
     }
 
     inputFree();

@@ -22,20 +22,22 @@ include $(DEVKITARM)/gba_rules
 #---------------------------------------------------------------------------------
 TARGET		:= OpenLara
 BUILD		:= build
-SOURCES		:= .
-INCLUDES	:= include
+SOURCES		:= ../../fixed . asm
+INCLUDES	:= include . ../../fixed
 DATA		:= data
 MUSIC		:=
+LIBTONC		:= $(DEVKITPRO)/libtonc
 
 #---------------------------------------------------------------------------------
 # options for code generation
 #---------------------------------------------------------------------------------
 ARCH	:=	-mthumb -mthumb-interwork
 
-CFLAGS	:=	-g -Wall -O3\
+CFLAGS	:=	-g -Wall -O3 -D__GBA__\
 		-mcpu=arm7tdmi -mtune=arm7tdmi\
  		-fomit-frame-pointer\
 		-ffast-math\
+		-Wno-class-memaccess\
 		$(ARCH)
 
 CFLAGS	+=	$(INCLUDE)
@@ -48,14 +50,14 @@ LDFLAGS	=	-g $(ARCH) -Wl,-Map,$(notdir $*.map)
 #---------------------------------------------------------------------------------
 # any extra libraries we wish to link with the project
 #---------------------------------------------------------------------------------
-LIBS	:= -lmm -lgba
+LIBS	:= -lmm -ltonc
  
  
 #---------------------------------------------------------------------------------
 # list of directories containing libraries, this must be the top level containing
 # include and lib
 #---------------------------------------------------------------------------------
-LIBDIRS	:=	$(LIBGBA)
+LIBDIRS	:=	$(LIBGBA) $(LIBTONC)
 
 #---------------------------------------------------------------------------------
 # no real need to edit anything past this point unless you need to add additional
@@ -118,6 +120,7 @@ export LIBPATHS	:=	$(foreach dir,$(LIBDIRS),-L$(dir)/lib)
 $(BUILD):
 	@[ -d $@ ] || mkdir -p $@
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile
+	gbafix $(TARGET).gba -tOpenLara -cOPLA
 
 #---------------------------------------------------------------------------------
 clean:
@@ -150,15 +153,21 @@ soundbank.bin soundbank.h : $(AUDIOFILES)
 #---------------------------------------------------------------------------------
 	@mmutil $^ -osoundbank.bin -hsoundbank.h
 
-#---------------------------------------------------------------------------------
-# This rule links in binary data with the .bin extension
-#---------------------------------------------------------------------------------
-%.PHD.o	%_PHD.h :	%.PHD
-#---------------------------------------------------------------------------------
+%.PKD.o	%_PKD.h :	%.PKD
 	@echo $(notdir $<)
 	@$(bin2o)
 
+%.IMA.o	%_IMA.h :	%.IMA
+	@echo $(notdir $<)
+	@$(bin2o)
 
+%.SCR.o	%_SCR.h :	%.SCR
+	@echo $(notdir $<)
+	@$(bin2o)
+
+%.WAD.o	%_WAD.h :	%.WAD
+	@echo $(notdir $<)
+	@$(bin2o)
 
 -include $(DEPSDIR)/*.d
 

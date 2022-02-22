@@ -1611,6 +1611,9 @@ struct Bat : Enemy {
     virtual void updatePosition() {
         turn(state == STATE_FLY || state == STATE_ATTACK, BAT_TURN_SPEED);
 
+        if (!target)
+            target = (Character*)game->getLara(pos);
+
         if (flying) {
             float wy = waypoint.y - (target->stand != STAND_ONWATER ? 765.0f : 64.0f);
             lift(wy - pos.y, BAT_LIFT_SPEED);
@@ -1910,7 +1913,7 @@ struct Mutant : Enemy {
     }
 
     virtual void setSaveData(const SaveEntity &data) {
-        Character::setSaveData(data);
+        Enemy::setSaveData(data);
         if (flags.invisible)
             deactivate(true);
     }
@@ -2139,7 +2142,7 @@ struct GiantMutant : Enemy {
     }
 
     virtual void setSaveData(const SaveEntity &data) {
-        Character::setSaveData(data);
+        Enemy::setSaveData(data);
         if (flags.invisible)
             deactivate(true);
     }
@@ -2226,7 +2229,7 @@ struct GiantMutant : Enemy {
                 }
                 break;
             case STATE_ATTACK_3 :
-                if (target->stand != STAND_HANG) {
+                if ((mask & HIT_MASK_HAND) && (target->stand != STAND_HANG)) {
                     target->hit(GIANT_MUTANT_DAMAGE_FATAL, this, TR::HIT_GIANT_MUTANT);
                     return STATE_FATAL;
                 }
@@ -2306,7 +2309,7 @@ struct Centaur : Enemy {
     }
 
     virtual void setSaveData(const SaveEntity &data) {
-        Character::setSaveData(data);
+        Enemy::setSaveData(data);
         if (flags.invisible)
             deactivate(true);
     }
@@ -3503,8 +3506,10 @@ struct Winston : Enemy {
     virtual void render(Frustum *frustum, MeshBuilder *mesh, Shader::Type type, bool caustics) {
         if (environment && (flags.unused & 4)) {
             game->setRoomParams(getRoomIndex(), Shader::MIRROR, 1.5f, 2.0f, 2.5f, 1.0f, false);
-            environment->bind(sEnvironment);
+            GAPI::Texture *dtex = Core::active.textures[sDiffuse];
+            environment->bind(sDiffuse);
             Controller::render(frustum, mesh, type, caustics);
+            if (dtex) dtex->bind(sDiffuse);
         } else {
             Enemy::render(frustum, mesh, type, caustics);
         }

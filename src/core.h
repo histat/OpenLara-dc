@@ -13,7 +13,27 @@
 
 #define USE_CUBEMAP_MIPS
 
-#ifdef WIN32
+#if defined(WINAPI_FAMILY) && (WINAPI_FAMILY == WINAPI_FAMILY_PHONE_APP)
+    #define _OS_WP8      1
+    #define _GAPI_D3D11  1
+
+    #undef OS_PTHREAD_MT
+
+    #define INV_SINGLE_PLAYER
+    #define INV_VIBRATION
+    #define INV_GAMEPAD_ONLY
+#elif __UWP__
+    #define _OS_UWP      1
+    #define _GAPI_D3D11  1
+
+    #ifdef __XB1__
+        #define _OS_XB1
+        #define INV_VIBRATION
+        #define INV_GAMEPAD_ONLY
+    #endif
+
+    #undef OS_PTHREAD_MT
+#elif WIN32
     #define _OS_WIN      1
     #define _GAPI_GL     1
     //#define _GAPI_D3D9   1
@@ -30,6 +50,9 @@
     #ifdef _GAPI_GL
         #define VR_SUPPORT
     #endif
+
+    #define INV_VIBRATION
+    #define INV_QUALITY
 #elif ANDROID
     #define _OS_ANDROID 1
     #define _GAPI_GL    1
@@ -37,31 +60,43 @@
     //#define _GAPI_VULKAN
 
     #define VR_SUPPORT
+    #define INV_QUALITY
+    #define INV_STEREO
 #elif __SDL2__
     #define _GAPI_GL   1
     #ifdef SDL2_GLES
         #define _GAPI_GLES 1
         #define DYNGEOM_NO_VBO
     #endif
+    #define INV_QUALITY
+    #define INV_STEREO
 #elif __RPI__
     #define _OS_RPI    1
     #define _GAPI_GL   1
     #define _GAPI_GLES 1
 
     #define DYNGEOM_NO_VBO
+    #define INV_VIBRATION
+    #define INV_QUALITY
+    #define INV_STEREO
 #elif __CLOVER__
     #define _OS_CLOVER 1
     #define _GAPI_GL   1
     #define _GAPI_GLES 1
 
     #define DYNGEOM_NO_VBO
+    #define INV_GAMEPAD_NO_TRIGGER
+    #define INV_GAMEPAD_ONLY
+    #define INV_STEREO
 #elif __PSC__
     #define _OS_PSC    1
     #define _GAPI_GL   1
     #define _GAPI_GLES 1
 
     #define DYNGEOM_NO_VBO
-#elif __BITTBOY__
+    #define INV_GAMEPAD_ONLY
+    #define INV_STEREO
+#elif __BITTBOY__ || __MIYOO__
     #define _OS_BITTBOY 1
     #define _OS_LINUX   1
     #define _GAPI_SW    1
@@ -74,9 +109,17 @@
 
     // etnaviv driver has a bug with cubemap mips generator
     #undef USE_CUBEMAP_MIPS
+
+    #define INV_SINGLE_PLAYER
+    #define INV_VIBRATION
+    #define INV_GAMEPAD_ONLY
 #elif __linux__
     #define _OS_LINUX 1
     #define _GAPI_GL  1
+
+    #define INV_VIBRATION
+    #define INV_QUALITY
+    #define INV_STEREO
 #elif __APPLE__
     #define _GAPI_GL 1
     #include "TargetConditionals.h"
@@ -86,7 +129,9 @@
         #define _GAPI_GLES 1
     #else
         #define _OS_MAC    1
+        #define INV_STEREO
     #endif
+    #define INV_QUALITY
 #elif __EMSCRIPTEN__
     #define _OS_WEB    1
     #define _GAPI_GL   1
@@ -95,6 +140,9 @@
     #undef  OS_FILEIO_CACHE
 
     extern int WEBGL_VERSION;
+
+    #define INV_QUALITY
+    #define INV_STEREO
 #elif _3DS
     #include <3ds.h>
 
@@ -109,6 +157,11 @@
     // stb_vorbis - 8 ms
     // libvorbis  - 6 ms
     #define USE_LIBVORBIS
+
+    #define INV_SINGLE_PLAYER
+    #define INV_GAMEPAD_NO_TRIGGER
+    #define INV_GAMEPAD_ONLY
+    //#define INV_STEREO // hardware switch
 #elif _PSP
     #define _OS_PSP  1
     #define _GAPI_GU 1
@@ -118,35 +171,64 @@
     #define EDRAM_TEX
 
     #undef OS_PTHREAD_MT
+
+    #define INV_SINGLE_PLAYER
+    #define INV_GAMEPAD_NO_TRIGGER
+    #define INV_GAMEPAD_ONLY
 #elif __vita__
     #define _OS_PSV   1
     #define _GAPI_GXM 1
 
     #undef OS_PTHREAD_MT
+
+    //#define USE_LIBVORBIS // TODO crash
+
+    #define INV_SINGLE_PLAYER
+    #define INV_GAMEPAD_NO_TRIGGER
+    #define INV_GAMEPAD_ONLY
 #elif __SWITCH__
     #define _OS_SWITCH 1
     #define _GAPI_GL   1
 
     #undef OS_PTHREAD_MT
+    #define INV_QUALITY
+    #define INV_STEREO
 #elif _XBOX
     #define _OS_XBOX   1
     #define _GAPI_D3D8 1
 
     #undef OS_PTHREAD_MT
+    #undef USE_CUBEMAP_MIPS
 
     #define NOMINMAX
     #include <xtl.h>
     #include <xgraphics.h>
+
+    #define INV_GAMEPAD_NO_TRIGGER
+    #define INV_GAMEPAD_ONLY
+    #define INV_VIBRATION
+#elif _X360
+    #define _OS_X360  1
+    // TODO
+#elif __NDLESS__
+    #define _OS_TNS   1
+    #define _GAPI_SW  1
+    #include <os.h>
+
+    #undef OS_PTHREAD_MT
 #elif __DC__
     #define _OS_DC   1
     #define _GAPI_TA  1
+
+    #define INV_SINGLE_PLAYER
+    #define INV_GAMEPAD_ONLY
 
     #undef OS_FILEIO_CACHE
     #undef OS_PTHREAD_MT
     #undef USE_CUBEMAP_MIPS
 #endif
 
-#if !defined(_OS_PSP) && !defined(_OS_DC)
+#if !defined(_OS_PSP) && !defined(_OS_TNS)
     #define USE_INFLATE
 #endif
 
@@ -154,7 +236,7 @@
     #include "libs/tinf/tinf.h"
 #endif
 
-#if defined(_GAPI_SW) || defined(_GAPI_GU) || defined(_GAPI_TA)
+#if defined(_GAPI_SW) || defined(_GAPI_GU)
     #define FFP
 #endif
 
@@ -163,6 +245,8 @@
     #if defined(_GAPI_GU)
         #define SPLIT_BY_CLUT
     #endif
+#elif _GAPI_TA
+    #define SPLIT_BY_TILE
 #else
     // current etnaviv driver implementation uses uncompatible Mesa GLSL compiler
     // it produce unimplemented TRUNC/ARL instructions instead of F2I
@@ -182,6 +266,8 @@
     #define SHADOW_TEX_SIZE      256
 #elif defined(_OS_PSV)
     #define SHADOW_TEX_SIZE      1024
+#elif defined(_OS_DC)
+     #define SHADOW_TEX_SIZE     512   
 #else
     #define SHADOW_TEX_SIZE      2048
 #endif
@@ -247,10 +333,10 @@ namespace Core {
     struct Mutex {
         void *obj;
     
-        Mutex()       { obj = osMutexInit(); }
-        ~Mutex()      { osMutexFree(obj);    }
-        void lock()   { osMutexLock(obj);    }
-        void unlock() { osMutexUnlock(obj);  }
+        Mutex()       { obj = osMutexInit();          }
+        ~Mutex()      { if (obj) osMutexFree(obj);    }
+        void lock()   { if (obj) osMutexLock(obj);    }
+        void unlock() { if (obj) osMutexUnlock(obj);  }
     };
     
     struct Lock {
@@ -319,7 +405,7 @@ namespace Core {
             }
 
             void setLighting(Quality value) {
-            #if defined(_GAPI_SW) || defined(_GAPI_GU) || defined(_GAPI_TA)
+            #if defined(_GAPI_SW) || defined(_GAPI_GU)
                 lighting = LOW;
             #else
                 lighting = value;
@@ -327,7 +413,7 @@ namespace Core {
             }
 
             void setShadows(Quality value) {
-            #if defined(_GAPI_SW) || defined(_GAPI_GU) || defined(_GAPI_TA)
+            #if defined(_GAPI_SW) || defined(_GAPI_GU)
                 shadows = LOW;
             #else
                 shadows = value;
@@ -335,7 +421,7 @@ namespace Core {
             }
 
             void setWater(Quality value) {
-            #if defined(_GAPI_SW) || defined(_GAPI_GU) || defined(_GAPI_TA)
+            #if defined(_GAPI_SW) || defined(_GAPI_GU)
                 water = LOW;
             #else
                 if (value > LOW && !(support.texFloat || support.texHalf))
@@ -545,7 +631,6 @@ struct MeshRange {
     E( sNormal          ) \
     E( sReflect         ) \
     E( sShadow          ) \
-    E( sEnvironment     ) \
     E( sMask            )
 
 #define SHADER_UNIFORMS(E) \
@@ -701,7 +786,7 @@ namespace Core {
 
         void stop() {
             if (fpsTime < Core::getTime()) {
-                LOG("FPS: %d DIP: %d TRI: %d RT: %d CB: %d\n", fps, dips, tris, rt, cb);
+                LOG("FPS: %d DIP: %d TRI: %d RT: %d\n", fps, dips, tris, rt);
             #ifdef PROFILE
                 LOG("frame time: %d mcs\n", tFrame / 1000);
                 LOG("sound: mix %d rev %d ren %d/%d ogg %d\n", Sound::stats.mixer, Sound::stats.reverb, Sound::stats.render[0], Sound::stats.render[1], Sound::stats.ogg);
@@ -997,6 +1082,13 @@ namespace Core {
         settings.audio.reverb = false;
     #endif
 
+    #ifdef _OS_PSV
+        settings.detail.setFilter   (Core::Settings::HIGH);
+        settings.detail.setLighting (Core::Settings::LOW);
+        settings.detail.setShadows  (Core::Settings::MEDIUM);
+        settings.detail.setWater    (Core::Settings::MEDIUM);
+    #endif
+
     #ifdef _OS_XBOX
         settings.detail.setFilter   (Core::Settings::HIGH);
         settings.detail.setLighting (Core::Settings::LOW);
@@ -1004,9 +1096,20 @@ namespace Core {
         settings.detail.setWater    (Core::Settings::LOW);
     #endif
 
+    #ifdef _OS_WP8
+        settings.detail.setFilter(Core::Settings::HIGH);
+        settings.detail.setLighting(Core::Settings::LOW);
+        settings.detail.setShadows(Core::Settings::LOW);
+        settings.detail.setWater(Core::Settings::LOW);
+    #endif
+
     #ifdef _OS_DC
+        settings.detail.setFilter   (Core::Settings::MEDIUM);
+        settings.detail.setLighting (Core::Settings::LOW);
+        settings.detail.setShadows  (Core::Settings::LOW);
+        settings.detail.setWater    (Core::Settings::LOW);
+
         settings.audio.reverb = false;
-        settings.audio.music = false;
     #endif
 
         memset(&active, 0, sizeof(active));
@@ -1028,6 +1131,7 @@ namespace Core {
         GAPI::deinit();
         NAPI::deinit();
         Sound::deinit();
+        Stream::deinit();
     }
 
     void setVSync(bool enable) {
@@ -1057,7 +1161,7 @@ namespace Core {
             GAPI::discardTarget(!(active.targetOp & RT_STORE_COLOR), !(active.targetOp & RT_STORE_DEPTH));
 
             GAPI::Texture *target = reqTarget.texture;
-            uint32  face          = reqTarget.face;
+            uint32 face           = reqTarget.face;
 
             if (target != active.target || face != active.targetFace) {
                 Core::stats.rt++;
@@ -1222,7 +1326,7 @@ namespace Core {
     }
 
     void setFog(const vec4 &params) {
-    #ifdef _XBOX
+    #if defined(_GAPI_D3D8) || defined(_GAPI_C3D) || defined(_GAPI_SW) || defined(FFP)
         GAPI::setFog(params);
     #else
         ASSERT(Core::active.shader);

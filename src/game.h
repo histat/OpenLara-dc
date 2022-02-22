@@ -14,29 +14,43 @@
 namespace Game {
     Level      *level;
     Stream     *nextLevel;
-    ControlKey cheatSeq[MAX_CHEAT_SEQUENCE];
+    ControlKey cheatSeq[MAX_PLAYERS][MAX_CHEAT_SEQUENCE];
 
-    void cheatControl(ControlKey key) {
+    void cheatControl(int32 playerIndex) {
+        ControlKey key = Input::lastState[playerIndex];
+
         if (key == cMAX || !level || level->level.isTitle() || level->level.isCutsceneLevel()) return;
-        const ControlKey CHEAT_ALL_WEAPONS[] = { cLook, cWeapon, cDash, cDuck, cDuck, cDash, cRoll, cLook };
-        const ControlKey CHEAT_SKIP_LEVEL[]  = { cDuck, cDash, cLook, cRoll, cWeapon, cLook, cDash, cDuck };
-        const ControlKey CHEAT_DOZY_MODE[]   = { cWalk, cLook, cWalk, cLook, cWalk, cLook, cWalk, cLook };
+        const ControlKey CHEAT_ALL_WEAPONS_1[] = { cLook, cWeapon, cDash, cDuck, cDuck, cDash, cRoll, cLook };
+        const ControlKey CHEAT_ALL_WEAPONS_2[] = { cWeapon, cLook, cWeapon, cLook, cWeapon, cLook, cWeapon, cLook };
+        
+        const ControlKey CHEAT_SKIP_LEVEL_1[]  = { cDuck, cDash, cLook, cRoll, cWeapon, cLook, cDash, cDuck };
+        const ControlKey CHEAT_SKIP_LEVEL_2[]  = { cJump, cLook, cJump, cLook, cJump, cLook, cJump, cLook };
+
+        const ControlKey CHEAT_DOZY_MODE[]     = { cWalk, cLook, cWalk, cLook, cWalk, cLook, cWalk, cLook };
 
         for (int i = 0; i < MAX_CHEAT_SEQUENCE - 1; i++)
-            cheatSeq[i] = cheatSeq[i + 1];
-        cheatSeq[MAX_CHEAT_SEQUENCE - 1] = key;
+            cheatSeq[playerIndex][i] = cheatSeq[playerIndex][i + 1];
+        cheatSeq[playerIndex][MAX_CHEAT_SEQUENCE - 1] = key;
+
+        #define CHECK_CHEAT(seq) (!memcmp(&cheatSeq[playerIndex][MAX_CHEAT_SEQUENCE - COUNT(seq)], seq, sizeof(seq)))
 
     // add all weapons
-        if (!memcmp(&cheatSeq[MAX_CHEAT_SEQUENCE - COUNT(CHEAT_ALL_WEAPONS)], CHEAT_ALL_WEAPONS, sizeof(CHEAT_ALL_WEAPONS))) {
+        if (CHECK_CHEAT(CHEAT_ALL_WEAPONS_1) || CHECK_CHEAT(CHEAT_ALL_WEAPONS_2))
+        {
             inventory->addWeapons();
             level->playSound(TR::SND_SCREAM);
         }
+
     // skip level
-        if (!memcmp(&cheatSeq[MAX_CHEAT_SEQUENCE - COUNT(CHEAT_SKIP_LEVEL)], CHEAT_SKIP_LEVEL, sizeof(CHEAT_SKIP_LEVEL)))
+        if (CHECK_CHEAT(CHEAT_SKIP_LEVEL_1) || CHECK_CHEAT(CHEAT_SKIP_LEVEL_2))
+        {
             level->loadNextLevel();
+        }
+
     // dozy mode
-        if (!memcmp(&cheatSeq[MAX_CHEAT_SEQUENCE - COUNT(CHEAT_DOZY_MODE)], CHEAT_DOZY_MODE, sizeof(CHEAT_DOZY_MODE))) {
-            Lara *lara = (Lara*)level->getLara(0);
+        if (CHECK_CHEAT(CHEAT_DOZY_MODE))
+        {
+            Lara *lara = (Lara*)level->getLara(playerIndex);
             if (lara) {
                 lara->setDozy(true);
             }
@@ -97,7 +111,7 @@ void loadSettings(Stream *stream, void *userData) {
     Core::settings.version = SETTINGS_VERSION;
     Core::setVSync(Core::settings.detail.vsync != 0);
 
-    #if defined(_GAPI_SW) || defined(_GAPI_GU) || defined(_GAPI_TA)
+    #if defined(_GAPI_SW) || defined(_GAPI_GU)
         Core::settings.detail.filter   = Core::Settings::LOW;
         Core::settings.detail.lighting = Core::Settings::LOW;
         Core::settings.detail.shadows  = Core::Settings::LOW;
@@ -196,7 +210,12 @@ namespace Game {
         Input::update();
         Network::update();
 
-        cheatControl(Input::lastState[0]); 
+        for (int32 i = 0; i < MAX_PLAYERS; i++)
+        {
+            if (level->players[i]) {
+                cheatControl(i);
+            }
+        }
 
         if (!level->level.isTitle()) {
             if (Input::lastState[0] == cStart) level->addPlayer(0);

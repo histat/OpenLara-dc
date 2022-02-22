@@ -25,13 +25,6 @@ enum StringID {
     , STR_QUALITY_LOW
     , STR_QUALITY_MEDIUM
     , STR_QUALITY_HIGH
-#ifdef __DC__
-    , STR_LANG_EN
-    , STR_LANG_FR
-    , STR_LANG_DE
-    , STR_LANG_ES
-    , STR_LANG_IT
-#else
     , STR_LANG_EN
     , STR_LANG_FR
     , STR_LANG_DE
@@ -45,7 +38,8 @@ enum StringID {
     , STR_LANG_FI
     , STR_LANG_CZ
     , STR_LANG_CN
-#endif
+    , STR_LANG_HU
+    , STR_LANG_SV
     , STR_APPLY
     , STR_GAMEPAD_1
     , STR_GAMEPAD_2
@@ -266,14 +260,6 @@ enum StringID {
     #define STR_RUSSIAN "Ðóññêè{è"
 #endif
 
-#ifdef __DC__
-#define STR_LANGUAGES \
-      "English"       \
-    , "Fran|cais"     \
-    , "Deutsch"       \
-    , "Espa+nol"      \
-    , "Italiano"
-#else
 #define STR_LANGUAGES \
       "English"       \
     , "Fran|cais"     \
@@ -287,10 +273,11 @@ enum StringID {
     , "\x11\x01\x22\x01\x0F\x01\x0F\x01\x0E\x01\x06\x01\x04\x01\x0C\x01\x0B\xFF\xFF" \
     , "Suomi"         \
     , "{Cesky"        \
-    , "\x11\x02\x8A\x02\x6C\x01\x54\x03\x02\xFF\xFF"
-#endif
+    , "\x11\x02\x8A\x02\x6C\x01\x54\x03\x02\xFF\xFF" \
+    , "Magyar" \
+    , "Svenska"
 
-#define LANG_PREFIXES "_EN", "_FR", "_DE", "_ES", "_IT", "_PL", "_PT", "_RU", "_JA", "_GR", "_FI", "_CZ", "_CN"
+#define LANG_PREFIXES "_EN", "_FR", "_DE", "_ES", "_IT", "_PL", "_PT", "_RU", "_JA", "_GR", "_FI", "_CZ", "_CN", "_HU", "_SV"
 
 #define STR_KEYS \
       "NONE", "LEFT", "RIGHT", "UP", "DOWN", "SPACE", "TAB", "ENTER", "ESCAPE", "SHIFT", "CTRL", "ALT" \
@@ -329,19 +316,6 @@ const char *helpText =
 #include "lang/de.h"
 #include "lang/es.h"
 #include "lang/it.h"
-#ifdef __DC__
-
-inline char remapCyrillic(char c) {
-  return c;
-}
-
-#define JA_GLYPH_COUNT 0
-#define GR_GLYPH_COUNT 0
-#define GR_GLYPH_BASE 0
-const uint8 GR_GLYPH_WIDTH[] = { 0 };
-#define CN_GLYPH_COUNT 0
-
-#else
 #include "lang/pl.h"
 #include "lang/pt.h"
 #include "lang/ru.h"
@@ -350,29 +324,11 @@ const uint8 GR_GLYPH_WIDTH[] = { 0 };
 #include "lang/fi.h"
 #include "lang/cz.h"
 #include "lang/cn.h"
-#endif
+#include "lang/hu.h"
+#include "lang/sv.h"
 
 char **STR = NULL;
 
-#ifdef __DC__
-void ensureLanguage(int lang) {
-    ASSERT(COUNT(STR_EN) == STR_MAX);
-    ASSERT(COUNT(STR_FR) == STR_MAX);
-    ASSERT(COUNT(STR_DE) == STR_MAX);
-    ASSERT(COUNT(STR_ES) == STR_MAX);
-    ASSERT(COUNT(STR_IT) == STR_MAX);
-
-    lang += STR_LANG_EN;
-
-    switch (lang) {
-        case STR_LANG_FR : STR = (char**)STR_FR; break;
-        case STR_LANG_DE : STR = (char**)STR_DE; break;
-        case STR_LANG_ES : STR = (char**)STR_ES; break;
-        case STR_LANG_IT : STR = (char**)STR_IT; break;
-        default          : STR = (char**)STR_EN; break;
-    }
-}
-#else
 void ensureLanguage(int lang) {
     ASSERT(COUNT(STR_EN) == STR_MAX);
     ASSERT(COUNT(STR_FR) == STR_MAX);
@@ -387,6 +343,8 @@ void ensureLanguage(int lang) {
     ASSERT(COUNT(STR_FI) == STR_MAX);
     ASSERT(COUNT(STR_CZ) == STR_MAX);
     ASSERT(COUNT(STR_CN) == STR_MAX);
+    ASSERT(COUNT(STR_HU) == STR_MAX);
+    ASSERT(COUNT(STR_SV) == STR_MAX);
 
     lang += STR_LANG_EN;
 
@@ -403,9 +361,10 @@ void ensureLanguage(int lang) {
         case STR_LANG_FI : STR = (char**)STR_FI; break;
         case STR_LANG_CZ : STR = (char**)STR_CZ; break;
         case STR_LANG_CN : STR = (char**)STR_CN; break;
+        case STR_LANG_HU : STR = (char**)STR_HU; break;
+        case STR_LANG_SV : STR = (char**)STR_SV; break;
         default          : STR = (char**)STR_EN; break;
     }
 }
-#endif
 
 #endif

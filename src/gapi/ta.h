@@ -544,22 +544,22 @@ namespace GAPI {
     void clear(bool color, bool depth) {}
 
     void setClearColor(const vec4 &color) {
-	pvr_set_bg_color(color.x, color.y, color.z);
+	      pvr_set_bg_color(color.x, color.y, color.z);
     }
 
     void setViewport(const short4 &v) {
         float w = v.z * 0.5f;
-	float h = v.w * 0.5f;
+	      float h = v.w * 0.5f;
         float near = 0.0f;
         float far = 1.0f;
 
 	//mat4 matrix;
 
-	clear_matrix();
-	save_matrix(&m_Matrix[0].m);
+	      clear_matrix();
+	      save_matrix(&m_Matrix[0].m);
 	//matrix.identity();
 
-	m_Matrix[0].e00 = w;
+	      m_Matrix[0].e00 = w;
         m_Matrix[0].e11 = -h;
         m_Matrix[0].e22 = (far - near); //(far - near) * 0.5f;
         m_Matrix[0].e23 = near; //(far + near) * 0.5f;

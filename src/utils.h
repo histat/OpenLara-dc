@@ -8,7 +8,9 @@
 //#define TEST_SLOW_FIO
 
 #ifdef _DEBUG
-    #if defined(_OS_LINUX) || defined(_OS_RPI) || defined(_OS_CLOVER)
+    #if defined(_OS_WP8)
+        #define debugBreak() /* TODO */
+    #elif defined(_OS_LINUX) || defined(_OS_RPI) || defined(_OS_CLOVER)
         #define debugBreak() raise(SIGTRAP);
     #elif defined(_OS_3DS)
         #define debugBreak() svcBreak(USERBREAK_ASSERT); 
@@ -16,11 +18,25 @@
         #define debugBreak() _asm { int 3 }
     #endif
 
-    #define ASSERT(expr) if (expr) {} else { LOG("ASSERT:\n  %s:%d\n  %s => %s\n", __FILE__, __LINE__, __FUNCTION__, #expr); debugBreak(); }
+    #define ASSERT(expr) if (!(expr)) { LOG("ASSERT:\n  %s:%d\n  %s => %s\n", __FILE__, __LINE__, __FUNCTION__, #expr); debugBreak(); }
     #define ASSERTV(expr) ASSERT(expr)
 
     #ifndef _OS_ANDROID
         #define LOG printf
+    #endif
+
+    #if defined(_OS_XBOX) || defined(_OS_XB1) || defined(_OS_WP8)
+        #define MAX_LOG_LENGTH 1024
+
+        #undef LOG
+        void LOG(const char *format, ...) {
+            char str[MAX_LOG_LENGTH];
+            va_list arglist;
+            va_start(arglist, format);
+            _vsnprintf(str, MAX_LOG_LENGTH, format, arglist);
+            va_end(arglist);
+            OutputDebugStringA(str);
+        }
     #endif
 
 #else
@@ -48,20 +64,6 @@
     #include <android/log.h>
     #undef LOG
     #define LOG(...) __android_log_print(ANDROID_LOG_INFO,"OpenLara",__VA_ARGS__)
-#endif
-
-#ifdef _OS_XBOX
-    #define MAX_LOG_LENGTH 1024
-
-    #undef LOG
-    void LOG(const char *format, ...) {
-        char str[MAX_LOG_LENGTH];
-        va_list arglist;
-        va_start(arglist, format);
-        _vsnprintf(str, MAX_LOG_LENGTH, format, arglist);
-        va_end(arglist);
-        OutputDebugStringA(str);
-    }
 #endif
 
 #ifdef _OS_DC
@@ -1079,6 +1081,32 @@ struct mat4 {
     void setPos(const vec3 &pos) {
         offset().xyz() = pos;
     }
+
+    void rot90()
+    {
+        swap(e00, e10);
+        swap(e01, e11);
+        swap(e02, e12);
+        swap(e03, e13);
+
+        e10 = -e10;
+        e11 = -e11;
+        e12 = -e12;
+        e13 = -e13;
+    }
+
+    void unrot90()
+    {
+        e10 = -e10;
+        e11 = -e11;
+        e12 = -e12;
+        e13 = -e13;
+
+        swap(e00, e10);
+        swap(e01, e11);
+        swap(e02, e12);
+        swap(e03, e13);
+    }
 };
 
 struct Basis {
@@ -1243,7 +1271,7 @@ struct Box {
     Box() {}
     Box(const vec3 &min, const vec3 &max) : min(min), max(max) {}
 
-    vec3 operator [] (int index) const {        
+    vec3 operator [] (int index) const {
         ASSERT(index >= 0 && index <= 7);
         switch (index) {
             case 0 : return min;
@@ -1498,10 +1526,9 @@ union ColorCLUT { // RGBA5551
     ColorCLUT() {}
     ColorCLUT(uint16 value) : value(value) {}
 
-    operator Color24() const { return Color24((r << 3) | (r >> 2), (g << 3) | (g >> 2), (b << 3) | (b >> 2)); }
-    operator Color32() const { return Color32((r << 3) | (r >> 2), (g << 3) | (g >> 2), (b << 3) | (b >> 2), -a); }
+    operator Color24() const { return Color24((r << 3) | (r >> 2), (g << 3), (b << 3)); }
+    operator Color32() const { return Color32((r << 3) | (r >> 2), (g << 3), (b << 3), -a); }
 };
-
 
 struct ColorIndex4 {
     uint8 a:4, b:4;
@@ -1550,7 +1577,7 @@ struct CLUT {
     ColorCLUT color[16];
 };
 
-namespace String {
+namespace StrUtils {
 
     void toLower(char *str) {
         if (!str) return;
@@ -1569,7 +1596,99 @@ namespace String {
         strcpy(res, str);
         return res;
     }
+
+    int32 length(uint16 *str) {
+        if (!str || !str[0]) return 0;
+        int32 len = 0;
+        while (*str++) {
+            len++;
+        }
+        return len;
+    }
 }
+
+
+template <typename T>
+struct Array {
+    int capacity;
+    int length;
+    T   *items;
+
+    Array(int capacity = 32) : capacity(capacity), length(0), items(NULL) {}
+
+    ~Array() { 
+        clear();
+    }
+
+    void reserve(int capacity) {
+        this->capacity = capacity;
+        if (items)
+            items = (T*)realloc(items, capacity * sizeof(T));
+        else
+            items = (T*)malloc(capacity * sizeof(T));
+    }
+
+    int push(const T &item) {
+        if (!items)
+            items = (T*)malloc(capacity * sizeof(T));
+
+        if (length == capacity)
+            reserve(capacity + capacity / 2);
+
+        items[length] = item;
+        return length++;
+    }
+
+    int pop() {
+        ASSERT(length > 0);
+        return --length;
+    }
+
+    void removeFast(int index) {
+        (*this)[index] = (*this)[length - 1];
+        length--;
+    }
+
+    void remove(int index) {
+        length--;
+        ASSERT(length >= 0);
+        for (int i = index; i < length; i++)
+            items[i] = items[i + 1];
+    }
+
+    void resize(int length) {
+        if (capacity < length)
+            reserve(length);
+        this->length = length;
+    }
+
+    void reset() {
+        length = 0;
+    }
+
+    void clear() {
+        reset();
+        free(items);
+        items = NULL;
+    }
+
+    int find(const T &item) {
+        for (int i = 0; i < length; i++) {
+            if (items[i] == item)
+                return i;
+        }
+        return -1;
+    }
+
+    void sort() {
+        ::sort(items, length);
+    }
+
+    T& operator[] (int index) {
+        ASSERT(index >= 0 && index < length);
+        return items[index]; 
+    };
+};
 
 
 struct Stream;
@@ -1590,6 +1709,8 @@ char contentDir[255];
 
 #define STREAM_BUFFER_SIZE (16 * 1024)
 
+#define MAX_PACKS 32
+
 struct Stream {
     typedef void (Callback)(Stream *stream, void *userData);
     Callback    *callback;
@@ -1602,26 +1723,164 @@ struct Stream {
 
     char        *buffer;
     int         bufferIndex;
+    bool        buffering;
+    uint32      baseOffset;
 
-    Stream(const char *name, const void *data, int size, Callback *callback = NULL, void *userData = NULL) : callback(callback), userData(userData), f(NULL), data((char*)data), name(NULL), size(size), pos(0), buffer(NULL) {
-        this->name = String::copy(name);
+    struct Pack
+    {
+        Stream* stream;
+        uint8*  table;
+        uint32  count;
+
+        struct FileInfo
+        {
+            uint32 size;
+            uint32 offset;
+        };
+
+        bool findFile(const char* name, FileInfo &info)
+        {
+            if (!table || !name || !name[0]) {
+                return false;
+            }
+
+            uint16 len = (uint16)strlen(name);
+            uint8* ptr = table;
+
+            for (uint32 i = 0; i < count; i++)
+            {
+                uint32 magic;
+                memcpy(&magic, ptr, sizeof(magic));
+                if (magic != 0x02014B50) {
+                    ASSERT(false);
+                    return false;
+                }
+
+                uint16 nameLen, extraLen, infoLen;
+                memcpy(&nameLen, ptr + 28, sizeof(nameLen));
+                memcpy(&extraLen, ptr + 30, sizeof(extraLen));
+
+                if ((nameLen == len) && (memcmp(ptr + 46, name, len) == 0))
+                {
+                    uint16 compression;
+                    memcpy(&compression, ptr + 10, sizeof(compression));
+
+                    if (compression != 0)
+                    {
+                        ASSERT(false);
+                        return false;
+                    }
+
+                    memcpy(&info.size,   ptr + 24, sizeof(info.size));
+                    memcpy(&info.offset, ptr + 42, sizeof(info.offset));
+
+                    stream->setPos(info.offset);
+                    magic = stream->readLE32();
+
+                    if (magic != 0x04034B50) {
+                        ASSERT(false);
+                        return false;
+                    }
+                    stream->seek(22);
+                    nameLen = stream->readLE16();
+                    extraLen = stream->readLE16();
+
+                    info.offset += 4 + 22 + 2 + 2 + nameLen + extraLen; 
+
+                    return true;
+                }
+
+                memcpy(&infoLen,  ptr + 32, sizeof(infoLen));
+
+                ptr += 46 + nameLen + extraLen + infoLen;
+            }
+
+            return false;
+        }
+
+        Pack(const char *name) : stream(NULL), table(NULL), count(0)
+        {
+            stream = new Stream(name);
+            stream->buffering = false;
+            stream->setPos(stream->size - 22);
+            uint32 magic = stream->readLE32();
+            
+            if (magic != 0x06054B50)
+            {
+                ASSERT(false);
+                return;
+            }
+
+            stream->seek(6);
+            count = stream->readLE16();
+            uint32 tableSize = stream->readLE32();
+            uint32 tableOffset = stream->readLE32();
+
+            stream->setPos(tableOffset);
+
+            table = new uint8[tableSize];
+            stream->raw(table, tableSize);
+        }
+
+        ~Pack() {
+            delete stream;
+            delete[] table;
+        }
+    };
+
+    static Pack* packs[MAX_PACKS];
+
+    static Array<char*> fileList;
+
+    static bool addPack(const char *name)
+    {
+        if (!existsContent(name)) {
+            return false;
+        }
+
+        for (int i = 0; i < MAX_PACKS; i++)
+        {
+            if (!packs[i])
+            {
+                packs[i] = new Pack(name);
+                return true;
+            }
+        }
+        return false;
     }
 
-    Stream(const char *name, Callback *callback = NULL, void *userData = NULL) : callback(callback), userData(userData), f(NULL), data(NULL), name(NULL), size(-1), pos(0), buffer(NULL) {
-        if (!name && callback) {
-            callback(NULL, userData);
-            delete this;
-            return;
+    static void init() {
+        readFileList();
+    }
+
+    static void deinit()
+    {
+        for (int i = 0; i < MAX_PACKS; i++)
+        {
+            if (!packs[i]) break;
+            delete packs[i];
         }
 
-        if (!name) {
-            ASSERT(false);
+        for (int i = 0; i < fileList.length; i++) {
+            delete[] fileList[i];
         }
+        fileList.clear();
+    }
 
-        char path[256];
+private:
+#ifdef _OS_3DS
+    static void streamThread(void *arg) {
+        Stream* stream = (Stream*)arg;
+        stream->openFile();
+    }
+#endif
+
+    void openFile() {
+        char path[255];
+
         path[0] = 0;
         if (contentDir[0] && (!cacheDir[0] || !strstr(name, cacheDir))) {
-            strcat(path, contentDir);
+            strcpy(path, contentDir);
         }
         strcat(path, name);
         fixBackslash(path);
@@ -1630,7 +1889,6 @@ struct Stream {
 
         if (!f) {
             #ifdef _OS_WEB
-                this->name = String::copy(name);
                 osDownload(this);
             #else
                 LOG("error loading file \"%s\"\n", name);
@@ -1645,15 +1903,78 @@ struct Stream {
             fseek(f, 0, SEEK_END);
             size = (int32)ftell(f);
             fseek(f, 0, SEEK_SET);
-            fpos = 0;
 
+            fpos = 0;
             bufferIndex = -1;
 
-            this->name = String::copy(name);
-
-            if (callback)
-                callback(this, userData);
+            if (callback) callback(this, userData);
         }
+    }
+public:
+
+    Stream(const char *name, const void *data, int size, Callback *callback = NULL, void *userData = NULL) : callback(callback), userData(userData), f(NULL), data((char*)data), name(NULL), size(size), pos(0), buffer(NULL) {
+        this->name = StrUtils::copy(name);
+    }
+
+    Stream(const char *name, Callback *callback = NULL, void *userData = NULL) : callback(callback), userData(userData), f(NULL), data(NULL), name(NULL), size(-1), pos(0), buffer(NULL), buffering(true), baseOffset(0) {
+        if (!name && callback) {
+            callback(NULL, userData);
+            delete this;
+            return;
+        }
+
+        if (!name) {
+            ASSERT(false);
+        }
+
+        Stream::Pack::FileInfo info;
+
+        char path[256];
+
+        for (int i = 0; i < MAX_PACKS; i++)
+        {
+            if (!packs[i]) break;
+
+            if (packs[i]->findFile(name, info))
+            {
+                path[0] = 0;
+                if (contentDir[0] && (!cacheDir[0] || !strstr(name, cacheDir))) {
+                    strcpy(path, contentDir);
+                }
+                strcat(path, packs[i]->stream->name);
+                fixBackslash(path);
+
+                f = fopen(path, "rb");
+                if (!f) {
+                    LOG("error loading file from pack \"%s -> %s\"\n", packs[i]->stream->name, name);
+                    ASSERT(false);
+                    return;
+                }
+                baseOffset = info.offset;
+                fseek(f, info.offset, SEEK_SET);
+                size = info.size;
+
+                fpos = 0;
+                bufferIndex = -1;
+
+                this->name = StrUtils::copy(name);
+                if (callback) callback(this, userData);
+                return;
+            }
+        }
+
+        this->name = StrUtils::copy(name);
+
+    #ifdef _OS_3DS /* TODO
+        if (callback) {
+            s32 priority = 0;
+            svcGetThreadPriority(&priority, CUR_THREAD_HANDLE);
+            threadCreate(streamThread, this, 64 * 1024, priority - 1, -2, false);
+            return;
+        }*/
+    #endif
+
+        openFile();
     }
 
     ~Stream() {
@@ -1661,6 +1982,92 @@ struct Stream {
         delete[] buffer;
         if (f) fclose(f);
     }
+
+#if _OS_3DS
+    static void readDirectory(const FS_Archive &archive, const char* path) {
+        char buf[255];
+        strcpy(buf, contentDir + 5); // 5 to skip "sdmc:"
+        strcat(buf, path);
+
+        FS_Path fsPath = fsMakePath(FS_PathType::PATH_ASCII, buf);
+
+        Handle dir;
+        if (FSUSER_OpenDirectory(&dir, archive, fsPath) != 0) {
+            return;
+        }
+
+        int32 pathLen = strlen(path);
+        strcpy(buf, path);
+
+        while (1) {
+            FS_DirectoryEntry entry;
+
+            u32 entriesRead = 0;
+            FSDIR_Read(dir, &entriesRead, 1, &entry);
+
+            if (entriesRead == 0) {
+                break;
+            }
+
+            int32 len = utf16_to_utf8((uint8*)buf + pathLen, entry.name, StrUtils::length(entry.name));
+            buf[pathLen + len] = 0;
+
+            if (entry.attributes & FS_ATTRIBUTE_DIRECTORY) {
+                strcat(buf, "/");
+                readDirectory(archive, buf);
+            } else {
+                fileList.push(StrUtils::copy(buf));
+            }
+        }
+
+        FSDIR_Close(dir);
+    }
+
+    static void readFileList() {
+        FS_Archive sdmc;
+        FS_Path fsRoot = fsMakePath(FS_PathType::PATH_ASCII, "");
+
+        if (FSUSER_OpenArchive(&sdmc, FS_ArchiveID::ARCHIVE_SDMC, fsRoot) != 0) {
+            return;
+        }
+
+        readDirectory(sdmc, "");
+
+        FSUSER_CloseArchive(sdmc);
+    }
+#elif _OS_PSV
+    static void readDirectory(char* path) {
+        SceUID dd = sceIoDopen(path);
+
+        size_t len = strlen(path);
+
+        SceIoDirent entry;
+        while (sceIoDread(dd, &entry) > 0)
+        {
+            strcat(path, entry.d_name);
+
+            if (SCE_S_ISDIR(entry.d_stat.st_mode))
+            {
+                strcat(path, "/");
+                readDirectory(path);
+            } else {
+                fileList.push(StrUtils::copy(path + strlen(contentDir)));
+            }
+
+            path[len] = 0;
+        }
+
+        sceIoClose(dd);
+    }
+
+    static void readFileList() {
+        char path[255];
+        strcpy(path, contentDir);
+        readDirectory(path);
+    }
+#else
+    static void readFileList() {};
+#endif
 
     static void cacheRead(const char *name, Callback *callback = NULL, void *userData = NULL) {
         Stream *stream = new Stream(name, NULL, 0, callback, userData);
@@ -1696,10 +2103,6 @@ struct Stream {
     }
 
     static bool exists(const char *name) {
-    #ifdef _OS_DC
-        if(!strncmp(name, "FMV/", 4))
-         return false;
-    #endif
         FILE *f = fopen(name, "rb");
         if (!f) return false;
         fclose(f);
@@ -1707,6 +2110,24 @@ struct Stream {
     }
 
     static bool existsContent(const char *name) {
+        for (uint32 i = 0; i < MAX_PACKS; i++)
+        {
+            if (!packs[i]) break;
+
+            Pack::FileInfo info;
+            if (packs[i]->findFile(name, info))
+                return true;
+        }
+
+        if (fileList.length) {
+            for (int i = 0; i < fileList.length; i++) {
+                if (strcmp(fileList[i], name) == 0) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         char fileName[1024];
         strcpy(fileName, contentDir);
         strcat(fileName, name);
@@ -1726,6 +2147,18 @@ struct Stream {
         if (!count) return;
 
         if (f) {
+
+            if (!buffering) {
+                if (fpos != pos) {
+                    fseek(f, baseOffset + pos, SEEK_SET);
+                    fpos = pos;
+                }
+                fread(data, 1, count, f);
+                pos += count;
+                fpos += count;
+                return;
+            }
+
             uint8 *ptr = (uint8*)data;
 
             while (count > 0) {
@@ -1734,16 +2167,16 @@ struct Stream {
                 if (bufferIndex != bIndex) {
                     bufferIndex = bIndex;
 
-                    size_t readed;
+                    int readed;
                     int part;
 
                     if (fpos == pos) {
                         part = min(count / STREAM_BUFFER_SIZE * STREAM_BUFFER_SIZE, size - fpos);
                         if (part > STREAM_BUFFER_SIZE) {
-                            readed = fread(ptr, 1, part, f);
+                            readed = (int)fread(ptr, 1, part, f);
 
                             #ifdef TEST_SLOW_FIO
-                                LOG("%s read %d + %d\n", name, fpos, (int)readed);
+                                LOG("%s read %d + %d\n", name, fpos, readed);
                                 Sleep(5);
                             #endif
 
@@ -1764,7 +2197,7 @@ struct Stream {
 
                     if (fpos != bufferIndex * STREAM_BUFFER_SIZE) {
                         fpos = bufferIndex * STREAM_BUFFER_SIZE;
-                        fseek(f, fpos, SEEK_SET);
+                        fseek(f, baseOffset + fpos, SEEK_SET);
 
                         #ifdef TEST_SLOW_FIO
                             LOG("%s seek %d\n", name, fpos);
@@ -1777,7 +2210,7 @@ struct Stream {
                     }
 
                     part   = min(STREAM_BUFFER_SIZE, size - fpos);
-                    readed = fread(buffer, 1, part, f);
+                    readed = (int)fread(buffer, 1, part, f);
 
                     #ifdef TEST_SLOW_FIO
                         LOG("%s read %d + %d\n", name, fpos, readed);
@@ -1851,6 +2284,8 @@ struct Stream {
     }
 };
 
+Stream::Pack* Stream::packs[MAX_PACKS];
+Array<char*> Stream::fileList;
 
 #ifdef OS_FILEIO_CACHE
 void osDataWrite(Stream *stream, const char *dir) {
@@ -2119,89 +2554,5 @@ struct FixedStr {
 };
 
 typedef FixedStr<16> str16;
-
-
-template <typename T>
-struct Array {
-    int capacity;
-    int length;
-    T   *items;
-
-    Array(int capacity = 32) : capacity(capacity), length(0), items(NULL) {}
-
-    ~Array() { 
-        clear();
-    }
-
-    void reserve(int capacity) {
-        this->capacity = capacity;
-        if (items)
-            items = (T*)realloc(items, capacity * sizeof(T));
-        else
-            items = (T*)malloc(capacity * sizeof(T));
-    }
-
-    int push(const T &item) {
-        if (!items)
-            items = (T*)malloc(capacity * sizeof(T));
-
-        if (length == capacity)
-            reserve(capacity + capacity / 2);
-
-        items[length] = item;
-        return length++;
-    }
-
-    int pop() {
-        ASSERT(length > 0);
-        return --length;
-    }
-
-    void removeFast(int index) {
-        (*this)[index] = (*this)[length - 1];
-        length--;
-    }
-
-    void remove(int index) {
-        length--;
-        ASSERT(length >= 0);
-        for (int i = index; i < length; i++)
-            items[i] = items[i + 1];
-    }
-
-    void resize(int length) {
-        if (capacity < length)
-            reserve(length);
-        this->length = length;
-    }
-
-    void reset() {
-        length = 0;
-    }
-
-    void clear() {
-        reset();
-        free(items);
-        items = NULL;
-    }
-
-    int find(const T &item) {
-        for (int i = 0; i < length; i++) {
-            if (items[i] == item)
-                return i;
-        }
-        return -1;
-    }
-
-    void sort() {
-        ::sort(items, length);
-    }
-
-    T& operator[] (int index) {
-        ASSERT(index >= 0 && index < length);
-        return items[index]; 
-    };
-};
-
 
 #endif

@@ -24,14 +24,20 @@
 
 #define INV_SHORT_HALF      (1.0 / 32767.0)
 
-#if defined(_GAPI_D3D11) || defined(_GAPI_GXM)
+#if (defined(_GAPI_D3D11) || defined(_GAPI_GXM)) && !defined(_GAPI_D3D11_9_3)
 	#define SHADOW_DEPTH
 #endif
 
 struct VS_INPUT {
+#ifdef _GAPI_GXM
+	float4 aCoord    : POSITION;
+	float4 aNormal   : NORMAL;
+	float4 aTexCoord : TEXCOORD0;
+#else
 	int4   aCoord    : POSITION;
 	int4   aNormal   : NORMAL;
 	int4   aTexCoord : TEXCOORD0;
+#endif
 	float4 aColor    : COLOR0;
 	float4 aLight    : COLOR1;
 };
@@ -44,43 +50,71 @@ struct VS_INPUT {
 	SamplerState           smpLinearWrap : register(s4);
 	SamplerComparisonState smpCmp        : register(s5);
 
-	Texture2D    sDiffuse     : register(t0);
-#ifdef NORMAL_AS_3D
-	Texture3D    sNormal      : register(t1);
-#else
-	Texture2D    sNormal      : register(t1);
-#endif
+	#ifdef DIFFUSE_AS_CUBE
+		TextureCube  sDiffuse : register(t0);
+	#else
+		Texture2D    sDiffuse : register(t0);
+	#endif
+
+	#ifdef NORMAL_AS_3D
+		Texture3D    sNormal  : register(t1);
+	#else
+		Texture2D    sNormal  : register(t1);
+	#endif
+
 	Texture2D    sReflect     : register(t2);
 	Texture2D    sShadow      : register(t3);
-	TextureCube  sEnvironment : register(t4);
-	Texture2D    sMask        : register(t5);
-	
+	Texture2D    sMask        : register(t4);
+
 	#define SAMPLE_2D(T,uv)             T.Sample(smpDefault,     uv)
 	#define SAMPLE_2D_POINT(T,uv)       T.Sample(smpPoint,       uv)
 	#define SAMPLE_2D_POINT_WRAP(T,uv)  T.Sample(smpPointWrap,   uv)
 	#define SAMPLE_2D_LINEAR(T,uv)      T.Sample(smpLinear,      uv)
 	#define SAMPLE_2D_LINEAR_WRAP(T,uv) T.Sample(smpLinearWrap,  uv)
-	#define SAMPLE_2D_CMP(T,uv)         T.SampleCmp(smpCmp,      uv.xy, uv.z)
-	#define SAMPLE_2D_LOD0(T,uv)        T.SampleLevel(smpLinear, uv, 0)
-	#define SAMPLE_3D(T,uv)             T.Sample(smpLinear,      uv)
-	#define SAMPLE_CUBE(T,uv)           T.Sample(smpLinear,      uv)
+
+	#ifdef _GAPI_D3D11_9_3
+		#define SAMPLE_2D_LOD0(T,uv)        SAMPLE_2D_POINT(T, uv)
+		#define SAMPLE_SHADOW(T,uv)         ((unpack(SAMPLE_2D_POINT(T, uv.xy/uv.w)) >= uv.z/uv.w) ? 1 : 0)
+	#else
+		#define SAMPLE_2D_LOD0(T,uv)        T.SampleLevel(smpLinear, uv, 0)
+		#define SAMPLE_SHADOW(T,uv)         T.SampleCmpLevelZero(smpCmp, uv.xy/uv.w, uv.z/uv.w)
+	#endif
+
+	#define SAMPLE_3D(T,uv)             T.SampleLevel(smpLinearWrap, uv, 0)
+	#define SAMPLE_CUBE(T,uv)           T.Sample(smpLinear, uv)
+
+	#define POSITION    SV_POSITION
 #else
-	sampler2D    sDiffuse     : register(s0);
+	#ifdef DIFFUSE_AS_CUBE
+		samplerCUBE  sDiffuse : register(s0);
+	#else
+		sampler2D    sDiffuse : register(s0);
+	#endif
+
 	sampler2D    sNormal      : register(s1);
 	sampler2D    sReflect     : register(s2);
 	sampler2D    sShadow      : register(s3);
-	samplerCUBE  sEnvironment : register(s4);
-	sampler2D    sMask        : register(s5);
-	
+	sampler2D    sMask        : register(s4);
+
 	#define SAMPLE_2D(T,uv)             tex2D(T, uv)
 	#define SAMPLE_2D_POINT(T,uv)       tex2D(T, uv)
 	#define SAMPLE_2D_POINT_WRAP(T,uv)  tex2D(T, uv)
 	#define SAMPLE_2D_LINEAR(T,uv)      tex2D(T, uv)
 	#define SAMPLE_2D_LINEAR_WRAP(T,uv) tex2D(T, uv)
 	#define SAMPLE_2D_LOD0(T,uv)        tex2Dlod(T, float4(uv.xy, 0, 0))
-	#define SAMPLE_2D_CMP(T,uv)         ((tex2D(T, uv.xy) => uv.z) ? 1 : 0)
+
+	#if defined(_GAPI_GXM)
+		#define SAMPLE_SHADOW(T,uv)     f1tex2Dproj(T, uv)
+	#else
+		#define SAMPLE_SHADOW(T,uv)     ((unpack(tex2D(T, uv.xy/uv.w)) >= uv.z/uv.w) ? 1 : 0)
+	#endif
+
 	#define SAMPLE_3D(T,uv)             tex3D(T, uv)
 	#define SAMPLE_CUBE(T,uv)           texCUBE(T, uv)
+
+	#if defined(PIXEL) && !defined(_GAPI_GXM)
+		#define POSITION    VPOS
+	#endif
 #endif
 
 float4      uParam                  : register(  c0 );
@@ -99,10 +133,22 @@ float4      uPosScale[2]            : register( c92 );
 float4      uContacts[MAX_CONTACTS] : register( c98 );
 
 // options for compose, shadow, ambient passes
-#define OPT_AMBIENT             1
-#define OPT_SHADOW              1
-#define OPT_CONTACT             1
-#define OPT_CAUSTICS            1
+#ifdef _GAPI_GXM
+	//#define OPT_AMBIENT
+	#define OPT_SHADOW
+	//#define OPT_CONTACT
+	//#define OPT_CAUSTICS
+#elif _GAPI_D3D11_9_3
+	//#define OPT_AMBIENT
+	//#define OPT_SHADOW
+	//#define OPT_CONTACT
+	//#define OPT_CAUSTICS
+#else
+    #define OPT_AMBIENT
+    #define OPT_SHADOW
+    #define OPT_CONTACT
+    #define OPT_CAUSTICS
+#endif
 
 float4 pack(float value) {
 	float4 v = frac(value * float4(1.0, 255.0, 65025.0, 16581375.0));
@@ -147,28 +193,29 @@ float calcCausticsV(float3 coord) {
 	return 0.5 + abs(sin(dot(coord.xyz, 1.0 / 1024.0) + uParam.x)) * 0.75;
 }
 
+#ifndef NORMAL_AS_3D
 float3 calcHeightMapNormal(float2 tcR, float2 tcB, float base) {
 	float dx = SAMPLE_2D_LOD0(sNormal, tcR).x - base;
 	float dz = SAMPLE_2D_LOD0(sNormal, tcB).x - base;
 	return normalize( float3(dx, 64.0 / (1024.0 * 8.0), dz) );
 }
+#endif
 
-half calcFresnel(half VoH, half f0) {
-	half f = (half)pow(1.0 - VoH, 5.0);
-	return f + f0 * (1.0h - f);
+float calcFresnel(float NdotV, float f0) {
+	return f0 + (1.0 - f0) * pow(1.0 - NdotV, 5.0);
 }
 
 void applyFogUW(inout float3 color, float3 coord, float waterFogDist, float waterColorDist) {
 	float h    = coord.y - uParam.y;
 	float3 dir = uViewPos.xyz - coord.xyz;
-	float dist;
-	
+	float dist = lerp(length(dir), abs(h / normalize(dir).y), step(uViewPos.y, uParam.y));
+/*
 	if (uViewPos.y < uParam.y) {
 		dist = abs(h / normalize(dir).y);
 	} else {
 		dist = length(dir);
 	}
-
+*/
 	float fog = saturate(1.0 / exp(dist * waterFogDist));
 	dist += h;
 	color.xyz *= lerp((float3)1.0, UNDERWATER_COLOR, clamp(dist * waterColorDist, 0.0, 2.0));
@@ -191,26 +238,20 @@ float getShadowValue(float3 lightVec, float4 lightProj) {
 */
 	float factor = step(0.0, lightProj.w); //float((sMin > 0.0f) && (sMax < lightProj.w)); // 
 	lightProj.xyz *= factor;
-	lightProj.xyz /= lightProj.w;
-	lightProj.z -= SHADOW_CONST_BIAS * SHADOW_TEXEL;
+	lightProj.z -= SHADOW_CONST_BIAS * SHADOW_TEXEL * lightProj.w;
 
-#ifdef _GAPI_GXM
-	float rShadow = f1tex2Dproj(sShadow, lightProj);
-#elif _GAPI_D3D11
-	float rShadow = sShadow.SampleCmpLevelZero(smpCmp, lightProj.xy, lightProj.z);
-#else
-	float rShadow = 1.0;
-#endif
+
+	float rShadow = SAMPLE_SHADOW(sShadow, lightProj);
 
 	float fade = saturate(dot(lightVec, lightVec));
 	return rShadow + (1.0 - rShadow) * fade;
 }
 
-float getShadow(float3 lightVec, float3 normal, float4 lightProj) {
+float getShadow(float3 lightVec, float4 lightProj) {
 	return getShadowValue(lightVec, lightProj);
 }
 
-float4 calcLightProj(float3 coord, float3 lightVec, float3 normal) {
+float4 calcLightProj(float3 coord) {
 	return mul(uLightProj, float4(coord, 1.0));
 }
 

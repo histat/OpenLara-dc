@@ -203,8 +203,8 @@ void joyUpdate() {
             if (_XInputGetState(j, &state) == ERROR_SUCCESS) {
                 //osJoyVibrate(j, state.Gamepad.bLeftTrigger / 255.0f, state.Gamepad.bRightTrigger / 255.0f); // vibration test
 
-                Input::setJoyPos(j, jkL,   joyDir(joyAxis( state.Gamepad.sThumbLX,  -32768, 32767),
-                                                  joyAxis(-state.Gamepad.sThumbLY,  -32768, 32767)));
+                Input::setJoyPos(j, jkL,   joyDir(joyAxis( state.Gamepad.sThumbLX, -32768, 32767),
+                                                  joyAxis(-state.Gamepad.sThumbLY, -32768, 32767)));
                 Input::setJoyPos(j, jkR,   joyDir(joyAxis( state.Gamepad.sThumbRX, -32768, 32767),
                                                   joyAxis(-state.Gamepad.sThumbRY, -32768, 32767)));
                 Input::setJoyPos(j, jkLT,  vec2(state.Gamepad.bLeftTrigger / 255.0f, 0.0f));
@@ -264,6 +264,7 @@ void joyUpdate() {
     }
 }
 
+#ifndef NO_TOUCH_SUPPORT
 // touch
 BOOL (WINAPI *_RegisterTouchWindow)(HWND, ULONG);
 BOOL (WINAPI *_GetTouchInputInfo)(HTOUCHINPUT, UINT, PTOUCHINPUT, int);
@@ -306,17 +307,20 @@ void touchUpdate(HWND hWnd, HTOUCHINPUT hTouch, int count) {
 
     _CloseTouchInputHandle(hTouch);
 }
+#else
+void touchInit(HWND hWnd) {};
+#endif
 
 // sound
-#define SND_SIZE 4704*2
+#define SND_SIZE (2352*3*2)
 
 bool sndReady;
 char *sndData;
 HWAVEOUT waveOut;
 WAVEFORMATEX waveFmt = { WAVE_FORMAT_PCM, 2, 44100, 44100 * 4, 4, 16, sizeof(waveFmt) };
 WAVEHDR waveBuf[2];
-HANDLE  sndThread;
-HANDLE  sndSema;
+HANDLE sndThread;
+HANDLE sndSema;
 
 void sndFree() {
     if (!sndReady) return;
@@ -404,15 +408,13 @@ HWND hWnd;
 
     void ContextSwap() {
         const BITMAPINFO bmi = { sizeof(BITMAPINFOHEADER), Core::width, -Core::height, 1, sizeof(GAPI::ColorSW) * 8, BI_RGB, 0, 0, 0, 0, 0 };
-        SetDIBitsToDevice(hDC, 0, 0, Core::width, Core::height, 0, 0, 0, Core::height, GAPI::swColor, &bmi, 0);
+        SetDIBitsToDevice(hDC, 0, 0, Core::width, Core::height, 0, 0, 0, Core::height, GAPI::swColor, &bmi, DIB_RGB_COLORS);
     }
 #elif _GAPI_GL
     HDC   hDC;
     HGLRC hRC;
 
     void ContextCreate() {
-        hDC = GetDC(hWnd);
-
         PIXELFORMATDESCRIPTOR pfd;
         memset(&pfd, 0, sizeof(pfd));
         pfd.nSize        = sizeof(pfd);
@@ -424,11 +426,67 @@ HWND hWnd;
         pfd.cBlueBits    = 8;
         pfd.cAlphaBits   = 8;
         pfd.cDepthBits   = 24;
-        pfd.cStencilBits = 8;
 
-        int format = ChoosePixelFormat(hDC, &pfd);
-        SetPixelFormat(hDC, format, &pfd);
-        hRC = wglCreateContext(hDC);
+        PFNWGLCHOOSEPIXELFORMATARBPROC    wglChoosePixelFormatARB    = NULL;
+        PFNWGLCREATECONTEXTATTRIBSARBPROC wglCreateContextAttribsARB = NULL;
+
+        {
+            HWND fWnd = CreateWindow("static", NULL, WS_POPUP, 0, 0, 0, 0, 0, 0, 0, 0);
+            HDC fDC = GetDC(fWnd);
+
+            int format = ChoosePixelFormat(fDC, &pfd);
+            SetPixelFormat(fDC, format, &pfd);
+            HGLRC fRC = wglCreateContext(fDC);
+            wglMakeCurrent(fDC, fRC);
+
+            wglChoosePixelFormatARB    = GetProcOGL(wglChoosePixelFormatARB);
+            wglCreateContextAttribsARB = GetProcOGL(wglCreateContextAttribsARB);
+
+            wglMakeCurrent(0, 0);
+            ReleaseDC(fWnd, fDC);
+            wglDeleteContext(fRC);
+            DestroyWindow(fWnd);
+        }
+
+        hDC = GetDC(hWnd);
+
+        if (wglChoosePixelFormatARB && wglCreateContextAttribsARB) {
+            const int pixelAttribs[] = {
+                WGL_DRAW_TO_WINDOW_ARB, GL_TRUE,
+                WGL_SUPPORT_OPENGL_ARB, GL_TRUE,
+                WGL_DOUBLE_BUFFER_ARB,  GL_TRUE,
+                WGL_PIXEL_TYPE_ARB,     WGL_TYPE_RGBA_ARB,
+                WGL_ACCELERATION_ARB,   WGL_FULL_ACCELERATION_ARB,
+                WGL_COLOR_BITS_ARB,     32,
+                WGL_ALPHA_BITS_ARB,     8,
+                WGL_DEPTH_BITS_ARB,     24,
+                0
+            };
+
+            int format;
+            UINT numFormats;
+            bool status = wglChoosePixelFormatARB(hDC, pixelAttribs, NULL, 1, &format, &numFormats);
+            ASSERT(status && numFormats > 0);
+
+            DescribePixelFormat(hDC, format, sizeof(pfd), &pfd);
+            SetPixelFormat(hDC, format, &pfd);
+
+            int contextAttribs[] = {
+                WGL_CONTEXT_MAJOR_VERSION_ARB, 3,
+                WGL_CONTEXT_MINOR_VERSION_ARB, 2,
+                WGL_CONTEXT_PROFILE_MASK_ARB,  WGL_CONTEXT_CORE_PROFILE_BIT_ARB,
+                0
+            };
+
+            hRC = wglCreateContextAttribsARB(hDC, 0, contextAttribs);
+
+            GAPI::GL_VER_3 = true;
+        } else {
+            int format = ChoosePixelFormat(hDC, &pfd);
+            SetPixelFormat(hDC, format, &pfd);
+            hRC = wglCreateContext(hDC);
+        }
+
         wglMakeCurrent(hDC, hRC);
     }
 
@@ -581,6 +639,8 @@ int checkLanguage() {
         case LANG_FINNISH    : str = STR_LANG_FI; break;
         case LANG_CZECH      : str = STR_LANG_CZ; break;
         case LANG_CHINESE    : str = STR_LANG_CN; break;
+        case LANG_HUNGARIAN  : str = STR_LANG_HU; break;
+        case LANG_SWEDISH    : str = STR_LANG_SV; break;
     }
     return str - STR_LANG_EN;
 }
@@ -676,10 +736,12 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
             joyFree();
             joyInit();
             return 1;
+    #ifndef NO_TOUCH_SUPPORT
         // touch
         case WM_TOUCH :
             touchUpdate(hWnd, (HTOUCHINPUT)lParam, wParam);
             break;
+    #endif
         // sound
         case MM_WOM_DONE :
             sndFill((HWAVEOUT)wParam, (WAVEHDR*)lParam);

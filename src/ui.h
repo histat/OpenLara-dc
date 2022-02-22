@@ -9,7 +9,7 @@
 #define SUBTITLES_SPEED  0.1f
 #define TEXT_LINE_HEIGHT 18
 
-#ifdef _OS_PSV
+#if defined(_OS_TNS)
     #define UI_SHOW_FPS
 #endif
 
@@ -47,13 +47,14 @@ namespace UI {
 
     int advGlyphsStart;
 
-    #define RU_MAP              "ÁÃÄÆÇÈËÏÓÔÖ×ØÙÚÛÜİŞßáâãäæçêëìíïòôö÷øùúûüışÿ" "i~"
+    #define RU_MAP              "ÁÃÄÆÇÈËÏÓÔÖ×ØÙÚÛÜİŞßáâãäæçêëìíïòôö÷øùúûüışÿ" "i~\"^"
     #define RU_GLYPH_COUNT      (COUNT(RU_MAP) - 1)
     #define RU_GLYPH_START      102
     #define RU_GLYPH_UPPERCASE  20
-    #define CHAR_SPR_TILDA      (110 + RU_GLYPH_COUNT - 1)
-    #define CHAR_SPR_I          (CHAR_SPR_TILDA - 1)
-
+    #define CHAR_SPR_TILDA      154
+    #define CHAR_SPR_I          153
+    #define CHAR_SPR_QUOTE      155
+    #define CHAR_SPR_AUH        156
 
     const static uint8 char_width[110 + RU_GLYPH_COUNT] = {
         14, 11, 11, 11, 11, 11, 11, 13, 8, 11, 12, 11, 13, 13, 12, 11, 12, 12, 11, 12, 13, 13, 13, 12, 12, 11, // A-Z
@@ -65,8 +66,8 @@ namespace UI {
         11, 11, 11, 13, 10, 13, 11, 11, 12, 12, 11,  9, 13, 13, 10, 13, // ÁÃÄÆÇÈËÏÓÔÖ×ØÙÚÛ
          9, 11, 12, 11, 10,  9,  8, 10, 11,  9, 10, 10, 11,  9, 10, 12, // ÜİŞßáâãäæçêëìíïò
         10, 10,  9, 11, 12,  9, 11,  8,  9, 13,  9,                     // ôö÷øùúûüışÿ
-    // additional latin (i~)
-        5, 10
+    // additional
+        5, 10, 10, 10 // i~"^
     }; 
         
     static const uint8 char_map[102 + 33*2] = {
@@ -81,16 +82,6 @@ namespace UI {
 
     enum Align  { aLeft, aRight, aCenter, aCenterV };
 
-#ifdef __DC__
-    inline int charRemap(char c) {
-        if (c < 11)
-            return c + 81;
-        if (c < 16)
-            return c + 91;
-        ASSERT(c >= 32)
-        return char_map[c - 32];
-    }
-#else
     inline int charRemap(char c) {
         if (isCyrillic(c)) {
             return char_map[RU_GLYPH_START + (c - 'À')];
@@ -103,10 +94,9 @@ namespace UI {
         ASSERT(c >= 32)
         return char_map[c - 32];
     }
-#endif
 
     inline bool skipChar(char c) {
-        return c == '~' || c == '$' || c == '(' || c == ')' || c == '|' || c == '}' || c == '*' || c == '{' || c == '+';
+        return c == '~' || c == '\"' || c == '^' || c == '$' || c == '(' || c == ')' || c == '|' || c == '}' || c == '*' || c == '{' || c == '+';
     }
 
     inline bool upperCase(int index) {
@@ -130,7 +120,8 @@ namespace UI {
             int o = 0;
             char c = RU_MAP[i];
 
-            if (c == 'á' || c == 'ä' || c == '~') h = 14;
+            if (c == 'á' || c == 'ä' || c == '~' || c == '\"') h = 14;
+            if (c == '^') h = 16;
             if (c == 'Ö' || c == 'Ù' || c == 'ö' || c == 'ù') { o = 1; h++; }
             if (c == 'ô') { o = 2; h += 2; }
 
@@ -156,19 +147,12 @@ namespace UI {
         TR::gSpriteTexturesCount = level.spriteTexturesCount;
     }
 
-#ifdef __DC__
-    bool isWideCharStart(char c) {
-        int lang = Core::settings.audio.language + STR_LANG_EN;
-        return false;
-    }
-#else
     bool isWideCharStart(char c) {
         int lang = Core::settings.audio.language + STR_LANG_EN;
         if (lang == STR_LANG_JA || lang == STR_LANG_GR || lang == STR_LANG_CN)
             return c == '\x11';
         return false;
     }
-#endif
 
     uint16 getWideCharGlyph(const char *text) {
         uint16 index = uint8(*text) << 8;
@@ -182,7 +166,6 @@ namespace UI {
 
     uint16 getWideCharGlyphWidth(uint16 glyph) {
         int lang = Core::settings.audio.language + STR_LANG_EN;
-#ifndef __DC__
         if (lang == STR_LANG_JA) {
             ASSERT(glyph < JA_GLYPH_COUNT);
             return 16;
@@ -195,18 +178,15 @@ namespace UI {
             ASSERT(glyph < CN_GLYPH_COUNT);
             return 16;
         }
-#endif
         return 1;
     }
 
     int getWideCharGlyphIndex(uint16 glyph) {
         int lang = Core::settings.audio.language + STR_LANG_EN;
         glyph += UI::advGlyphsStart + RU_GLYPH_COUNT;
-#ifndef __DC__
         if (lang == STR_LANG_JA) return glyph; glyph += JA_GLYPH_COUNT;
         if (lang == STR_LANG_GR) return glyph; glyph += GR_GLYPH_COUNT;
         if (lang == STR_LANG_CN) return glyph; glyph += CN_GLYPH_COUNT;
-#endif
         ASSERT(false);
         return glyph;
     }
@@ -286,6 +266,10 @@ namespace UI {
 
     void begin(float aspect) {
         ensureLanguage(Core::settings.audio.language);
+
+        #ifdef _OS_WP8
+            aspect = 1.0f / aspect;
+        #endif
 
         height = 480.0f;
         width  = height * aspect;
@@ -444,6 +428,8 @@ namespace UI {
             int frame = charRemap(charFrame);
             if (c == '+' && *text && *text != '@') frame = CHAR_SPR_TILDA;
             if (c == 'i' && skipChar(lastChar)) frame = CHAR_SPR_I;
+            if (c == '\"') frame = CHAR_SPR_QUOTE;
+            if (c == '^') frame = CHAR_SPR_AUH;
             lastChar = c;
 
             if (isShadow) {
@@ -693,14 +679,14 @@ namespace UI {
         Core::setBlendMode(bmPremult);
         Core::setCullMode(cmNone);
 
-        Core::mViewProj = GAPI::ortho(0.0f, float(Core::width), float(Core::height), 0.0f, 0.0f, 1.0f);
+        Core::mViewProj = GAPI::ortho(0.0f, float(Input::getTouchWidth()), float(Input::getTouchHeight()), 0.0f, 0.0f, 1.0f);
         
         game->setShader(Core::passGUI, Shader::DEFAULT);
 
-        float offset = Core::height * 0.25f;
+        float offset = Input::getTouchHeight() * 0.25f;
 
         if (Input::btnEnable[Input::bMove]) {
-            vec2 pos = vec2(offset * 0.7f, Core::height - offset * 0.7f) + vec2(-cosf(-PI * 3.0f / 4.0f), sinf(-PI * 3.0f / 4.0f)) * offset;
+            vec2 pos = vec2(offset * 0.7f, Input::getTouchHeight() - offset * 0.7f) + vec2(-cosf(-PI * 3.0f / 4.0f), sinf(-PI * 3.0f / 4.0f)) * offset;
             if (Input::down[Input::touchKey[Input::zMove]]) {
                 Input::Touch &t = Input::touch[Input::touchKey[Input::zMove] - ikTouchA];
                 renderControl(t.pos, Input::btnRadius, true);
@@ -720,21 +706,12 @@ namespace UI {
 
     void renderBar(CommonTexType type, const vec2 &pos, const vec2 &size, float value, uint32 fgColor = 0xFFFFFFFF, uint32 bgColor = 0x80000000, uint32 brColor1 = 0xFF4C504C, uint32 brColor2 = 0xFF748474, uint32 fgColor2 = 0) {
         MeshBuilder *mesh = game->getMesh();
-#ifdef _OS_DC
-        if (brColor1 != 0 || brColor2 != 0)
-	  mesh->addDynFrame(pos - 2.0f, size + 4.0f, brColor1, brColor2);
-        if (bgColor != 0)
-	    mesh->addDynBar(whiteSprite, pos - 1.0f, size + 2.0f, bgColor);
-        if ((fgColor != 0 || fgColor2 != 0) && value > 0.0f)
-            mesh->addDynBar(whiteSprite, pos, vec2(size.x * value, size.y), fgColor, fgColor2);
-#else
         if (brColor1 != 0 || brColor2 != 0)
             mesh->addDynFrame(pos - 2.0f, size + 4.0f, brColor1, brColor2);
         if (bgColor != 0)
             mesh->addDynBar(whiteSprite, pos - 1.0f, size + 2.0f, bgColor);
         if ((fgColor != 0 || fgColor2 != 0) && value > 0.0f)
             mesh->addDynBar(CommonTex[type], pos, vec2(size.x * value, size.y), fgColor, fgColor2);
-#endif
     }
 
     void renderHelp() {
@@ -794,6 +771,7 @@ namespace UI {
 
         game->setShader(Core::passCompose, Shader::ENTITY, false, false);
         Core::setMaterial(1.0f, 0.0f, 0.0f, 1.0f);
+        Core::setFog(FOG_NONE);
 
         vec4 o = vec4(offset, 0.0f);
 

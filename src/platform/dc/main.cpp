@@ -318,8 +318,6 @@ void joyUpdate() {
     tick += t+USEC_TO_TIMER(17000);
   }
 
-  gettimeofday(&tm, NULL);
-
   int mask = getimask();
   setimask(15);
 
@@ -337,7 +335,7 @@ void joyUpdate() {
       int joyy = pad->cond.controller.joyy;
       
       if(Buttons == 0x0606)
-	Core::quit();
+	      Core::quit();
       
       Input::setJoyDown(JoyCnt, jkUp, Buttons & DC_PAD::JOY_DPAD_UP);
       Input::setJoyDown(JoyCnt, jkDown, Buttons & DC_PAD::JOY_DPAD_DOWN);
@@ -351,17 +349,17 @@ void joyUpdate() {
       Input::setJoyDown(JoyCnt, jkLB, (Buttons & DC_PAD::JOY_LTRIGGER));
       Input::setJoyDown(JoyCnt, jkRB, (Buttons & DC_PAD::JOY_RTRIGGER));
       if ((Buttons & DC_PAD::JOY_LTRIGGER) != 0)
-	Input::setJoyDown(JoyCnt, jkStart, (Buttons & DC_PAD::JOY_BTN_START));
+	        Input::setJoyDown(JoyCnt, jkStart, (Buttons & DC_PAD::JOY_BTN_START));
       else
-	Input::setJoyDown(JoyCnt, jkSelect, (Buttons & DC_PAD::JOY_BTN_START));
+	        Input::setJoyDown(JoyCnt, jkSelect, (Buttons & DC_PAD::JOY_BTN_START));
       if ((Buttons & DC_PAD::JOY_BTN_C) != 0)
-	Input::setJoyDown(JoyCnt, jkLB, (Buttons & DC_PAD::JOY_BTN_C));
+	        Input::setJoyDown(JoyCnt, jkLB, (Buttons & DC_PAD::JOY_BTN_C));
       if ((Buttons & DC_PAD::JOY_BTN_Z) != 0)
-	Input::setJoyDown(JoyCnt, jkRB, (Buttons & DC_PAD::JOY_BTN_Z));
+	        Input::setJoyDown(JoyCnt, jkRB, (Buttons & DC_PAD::JOY_BTN_Z));
       
       vec2 stick = vec2(float(joyx), float(joyy)) / 128.0f - 1.0f;
       if (fabsf(joyx) < 0.2f && fabsf(joyy) < 0.2f)
-	stick = vec2(0.0f);
+        	stick = vec2(0.0f);
       
       Input::setJoyPos(JoyCnt, jkL, stick);
       
@@ -422,11 +420,11 @@ int main()
       joyUpdate();
 
       if (Game::update()) {
-	ta_begin_frame();
-	primitive_buffer_begin();
-	Game::render();
-	primitive_buffer_flush();
-	ta_end_dlist();
+	        ta_begin_frame();
+	        primitive_buffer_begin();
+	        Game::render();
+	        primitive_buffer_flush();
+	        ta_end_dlist();
       }
     }
 

@@ -1,3 +1,4 @@
+#define DIFFUSE_AS_CUBE
 #include "common.hlsl"
 
 struct VS_OUTPUT {
@@ -21,9 +22,9 @@ VS_OUTPUT main(VS_INPUT In) {
 
 	Out.normal.xyz = mulQuat(rBasisRot, normalize(In.aNormal.xyz));
 	Out.normal.w = saturate(1.0 / exp(length(Out.viewVec.xyz)));
-	
+
 	Out.pos = mul(uViewProj, float4(coord, rBasisPos.w));
-	
+
 	return Out;
 }
 
@@ -31,12 +32,12 @@ VS_OUTPUT main(VS_INPUT In) {
 
 float4 main(VS_OUTPUT In) : COLOR0 {
 	float3 rv = reflect(-In.viewVec.xyz, In.normal.xyz);
-	float4 color = SAMPLE_CUBE(sEnvironment, normalize(rv));
+	float4 color = SAMPLE_CUBE(sDiffuse, normalize(rv));
 
 	color *= uMaterial;
-    color.xyz = saturate(color.xyz);
-    
-    applyFog(color.xyz, In.normal.w);
+	color.xyz = saturate(color.xyz);
+
+	applyFog(color.xyz, In.normal.w);
 
 	return color;
 }

@@ -1301,7 +1301,7 @@ struct Lara : Character {
         updateTargets();
 
         Controller *lookTarget = canLookAt() ? target : NULL;
-        if (camera->mode == Camera::MODE_LOOK) {
+        if (canLookAt() && (camera->mode == Camera::MODE_LOOK || (lookTarget == NULL && (camera->viewAngle.x != 0.0f || camera->viewAngle.y != 0.0f)))) {
             vec3 p = pos + vec3(camera->targetAngle.x, camera->targetAngle.y) * 8192.0f;
             Character::lookAtPos(&p);
         } else
@@ -2304,7 +2304,7 @@ struct Lara : Character {
                 if (stand == STAND_UNDERWATER || stand == STAND_ONWATER)
                     return stand;
                 if (stand == STAND_AIR) {
-                    if (velocity.y > 0.0f && pos.y - waterLevel > 300.0) {
+                    if (velocity.y > 0.0f && pos.y - waterLevel > 300.0f) {
                         stopScreaming();
                         return STAND_UNDERWATER;
                     }
@@ -2326,7 +2326,7 @@ struct Lara : Character {
                     return STAND_AIR;
 
                 if (stand == STAND_AIR) {
-                    if (velocity.y > 0.0f && pos.y - waterLevel > 300.0) {
+                    if (velocity.y > 0.0f && pos.y - waterLevel > 300.0f) {
                         waterSplash();
                         pos.y = waterLevel + waterDepth;
                         game->playSound(TR::SND_WATER_SPLASH, pos, Sound::PAN);
@@ -3116,8 +3116,6 @@ struct Lara : Character {
 
         vec2 L = joy.L;
 
-        if (L.length() < INPUT_JOY_DZ_STICK) L = vec2(0.0f); // dead zone
-
         if (!((state == STATE_STOP || state == STATE_SURF_TREAD || state == STATE_HANG) && fabsf(L.x) < 0.5f && fabsf(L.y) < 0.5f)) {
             bool moving = state == STATE_RUN || state == STATE_WALK || state == STATE_BACK || state == STATE_FAST_BACK || state == STATE_SURF_SWIM || state == STATE_SURF_BACK || state == STATE_FORWARD_JUMP;
 
@@ -3128,13 +3126,13 @@ struct Lara : Character {
                     L.y = 0.0f;
             }
 
-            if (L.x != 0.0f) {
+            if (fabsf(L.x) > INPUT_JOY_DZ_STICK) {
                 input |= (L.x < 0.0f) ? LEFT : RIGHT;
                 if (moving || stand == STAND_UNDERWATER || stand == STAND_ONWATER)
                     rotFactor.y = min(fabsf(L.x) / 0.9f, 1.0f);
             }
 
-            if (L.y != 0.0f) {
+            if (fabsf(L.y) > INPUT_JOY_DZ_STICK) {
                 input |= (L.y < 0.0f) ? FORTH : BACK;
                 if (stand == STAND_UNDERWATER)
                     rotFactor.x = min(fabsf(L.y) / 0.9f, 1.0f);
@@ -3209,6 +3207,10 @@ struct Lara : Character {
                         game->invAdd(item->getEntity().type, 1);
 
                         vec4 p = game->projectPoint(vec4(item->pos, 1.0f));
+
+                        #ifdef _OS_WP8
+                            swap(p.x, p.y);
+                        #endif
 
                         if (p.w != 0.0f) {
                             p.x = ( p.x / p.w * 0.5f + 0.5f) * UI::width;
@@ -3625,6 +3627,11 @@ struct Lara : Character {
         return false;
     }
 
+    #ifdef _OS_3DS // for some reason move() math works incorrect on 3DS
+        #pragma GCC push_options
+        #pragma GCC optimize ("O0")
+    #endif
+
     void move() {
         vec3 vel = (velocity + flowVelocity) * Core::deltaTime * 30.0f + collisionOffset;
         vec3 opos(pos), offset(0.0f);
@@ -3775,6 +3782,10 @@ struct Lara : Character {
         if (dozy) stand = STAND_UNDERWATER;
     }
 
+    #ifdef _OS_3DS
+        #pragma GCC pop_options
+    #endif
+
     virtual void applyFlow(TR::Camera &sink) {
         if (stand != STAND_UNDERWATER && stand != STAND_ONWATER) return;
 
@@ -3865,10 +3876,14 @@ struct Lara : Character {
             game->setRoomParams(getRoomIndex(), Shader::MIRROR, 0.3f, 0.3f, 0.3f, 1.0f, false);
             Core::updateLights();
         */
-            environment->bind(sEnvironment);
+            GAPI::Texture *dtex = Core::active.textures[sDiffuse];
+
+            environment->bind(sDiffuse);
             visibleMask ^= 0xFFFFFFFF;
             Controller::render(frustum, mesh, type, caustics);
             visibleMask ^= 0xFFFFFFFF;
+
+            if (dtex) dtex->bind(sDiffuse);
         }
     }
 };

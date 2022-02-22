@@ -1,16 +1,15 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 		<head>
 			<title>OpenLara</title>
 			<link href="/projects/OpenLara/favicon.ico" rel="shortcut icon" type="image/x-icon" />
 			<style>
 			html {
-				overflow: hidden;
+				overflow: auto;
 			}
 			body {
 				margin: 0px;
 				font-size: 1.0em;
-				overflow: hidden;
 			}
 			.game_fs {
 				position: fixed;
@@ -142,6 +141,10 @@
                         id = 11;
                     } else if (lang == "zh") {
                         id = 12;
+                    } else if (lang == "hu") {
+                        id = 13;
+                    } else if (lang == "sv") {
+                        id = 14;
                     }
 					Module.ccall('set_def_lang', 'null', ['number'], [id]);
 				}

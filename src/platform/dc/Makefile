@@ -1,5 +1,5 @@
 ronindir = $(HOME)/repo/libronin
-SH_ELF_BIN = /opt/toolchains/dc/bin
+SH_ELF_BIN = /opt/toolchains/dc/sh-elf/bin
 
 DEBUG = 1
 
@@ -27,7 +27,8 @@ endif
 
 
 OBJS = main.o
-OBJS += ../../libs/stb_vorbis/stb_vorbis.o #../../libs/tinf/tinflate.o 
+#OBJS += ../../libs/stb_vorbis/stb_vorbis.o
+OBJS += ../../libs/tinf/tinflate.o 
 OBJS += dc_hardware.o libpspvram/valloc.o vm_file.o vmu.o
 OBJS += primitive/polygon.o primitive/modifier.o primitive/prim_buffer.o
 
@@ -44,31 +45,31 @@ partial:
 	make all
 
 run: $(TARGET)
-	dc-tool -x $< -i $(HOME)/Documents/dcdev/TR1-PSX.ISO
+	dc-tool -x $< -i $(HOME)/Documents/dcdev/TR1-PC.ISO
 
 dump: $(TARGET)
 	$(SH_ELF_BIN)/sh-elf-objdump -D $< > dump
 
 distclean:
-	$(RM) *.ISO *.CDI *.BIN *.elf *.bin *.iso ip.txt cd/1ST_READ.BIN
+	$(RM) *.ISO *.CDI *.BIN *.elf *.iso ip.txt cd/1ST_READ.BIN
 
 dist: 1ST_READ.BIN IP.BIN
 
-1ST_READ.BIN: demo.bin
+1ST_READ.BIN: demo.BIN
 	scramble $< $@
 
 ip.txt: ip.txt.in
 	 sed -e 's/[@]DATE[@]/$(shell date '+%Y%m%d')/' < $< > $@ 
 
-demo.bin: $(TARGET)
+demo.BIN: $(TARGET)
 	$(SH_ELF_BIN)/sh-elf-objcopy -S -R .stack -O binary $< $@
 
 IP.BIN: ip.txt
 	makeip $< $@
 
 dcdist: dist
-	cp 1ST_READ.BIN $(HOME)/Documents/dcdev/dcdist/
-	mkisofs -C 0,11702 -G IP.BIN -l -o TMP.ISO $(HOME)/Documents/dcdev/dcdist
+	cp 1ST_READ.BIN $(HOME)/Documents/dcdev/TR1-PC/
+	mkisofs -C 0,11702 -G IP.BIN -l -o TMP.ISO $(HOME)/Documents/dcdev/TR1-PC
 	cdi4dc TMP.ISO TEST.CDI
 
 cdi: dist

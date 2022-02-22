@@ -82,8 +82,10 @@ struct OptionItem {
             int maxWidth = UI::getTextSize(STR[color + value]).x;
             maxWidth = maxWidth / 2 + 8;
             x += w * 0.5f;
-            if (checkValue(value - 1)) UI::specOut(vec2(x - maxWidth - 16.0f, y), 108);
-            if (checkValue(value + 1)) UI::specOut(vec2(x + maxWidth, y), 109);
+            if (maxValue != 0xFF) {
+                if (checkValue(value - 1)) UI::specOut(vec2(x - maxWidth - 16.0f, y), 108);
+                if (checkValue(value + 1)) UI::specOut(vec2(x + maxWidth, y), 109);
+            }
         }
         return y + LINE_HEIGHT;
     }
@@ -123,23 +125,29 @@ struct OptionItem {
     }
 };
 
-#define SETTINGS(x) OFFSETOF(Core::Settings, x)
+#define SETTINGS(x) int32(OFFSETOF(Core::Settings, x))
+
+#ifdef INV_SINGLE_PLAYER
+    #define INV_CTRL_START_OPTION 1
+#else
+    #define INV_CTRL_START_OPTION 2
+#endif
 
 static const OptionItem optDetail[] = {
     OptionItem( OptionItem::TYPE_TITLE,  STR_SELECT_DETAIL ),
     OptionItem( ),
+#ifdef INV_QUALITY
     OptionItem( OptionItem::TYPE_PARAM,  STR_OPT_DETAIL_FILTER,   SETTINGS( detail.filter    ), STR_QUALITY_LOW, 0, 2 ),
     OptionItem( OptionItem::TYPE_PARAM,  STR_OPT_DETAIL_LIGHTING, SETTINGS( detail.lighting  ), STR_QUALITY_LOW, 0, 2 ),
     OptionItem( OptionItem::TYPE_PARAM,  STR_OPT_DETAIL_SHADOWS,  SETTINGS( detail.shadows   ), STR_QUALITY_LOW, 0, 2 ),
     OptionItem( OptionItem::TYPE_PARAM,  STR_OPT_DETAIL_WATER,    SETTINGS( detail.water     ), STR_QUALITY_LOW, 0, 2 ),
-    OptionItem( OptionItem::TYPE_PARAM,  STR_OPT_SIMPLE_ITEMS,    SETTINGS( detail.simple    ), STR_OFF, 0, 1 ),
-#if !defined(_OS_3DS) && !defined(_OS_GCW0)
-    OptionItem( OptionItem::TYPE_PARAM,  STR_OPT_RESOLUTION,      SETTINGS( detail.scale     ), STR_SCALE_100, 0, 3 ),
 #endif
-#if defined(_OS_WIN) || defined(_OS_LINUX) || defined(_OS_PSP) || defined(_OS_RPI) || defined(_OS_PSV)
+    OptionItem( OptionItem::TYPE_PARAM,  STR_OPT_SIMPLE_ITEMS,    SETTINGS( detail.simple    ), STR_OFF, 0, 1 ),
+#ifdef INV_QUALITY
+    OptionItem( OptionItem::TYPE_PARAM,  STR_OPT_RESOLUTION,      SETTINGS( detail.scale     ), STR_SCALE_100, 0, 3 ),
     OptionItem( OptionItem::TYPE_PARAM,  STR_OPT_DETAIL_VSYNC,    SETTINGS( detail.vsync     ), STR_OFF, 0, 1 ),
 #endif
-#if !defined(_OS_PSP) && !defined(_OS_PSV) && !defined(_OS_3DS) && !defined(_OS_GCW0)
+#ifdef INV_STEREO
     OptionItem( OptionItem::TYPE_PARAM,  STR_OPT_DETAIL_STEREO,   SETTINGS( detail.stereo    ), STR_NO_STEREO, 0, 
     #if defined(_OS_WIN) || defined(_OS_ANDROID)
         4 /* with VR option */
@@ -160,31 +168,9 @@ static const OptionItem optSound[] = {
     OptionItem( OptionItem::TYPE_PARAM,  STR_REVERBERATION, SETTINGS( audio.reverb    ), STR_OFF, 0, 1 ),
     OptionItem( OptionItem::TYPE_PARAM,  STR_OPT_SUBTITLES, SETTINGS( audio.subtitles ), STR_OFF, 0, 1 ),
 #ifndef FFP
-    OptionItem( OptionItem::TYPE_PARAM,  STR_OPT_LANGUAGE,  SETTINGS( audio.language  ), STR_LANG_EN, 0, STR_LANG_CN - STR_LANG_EN ),
+    OptionItem( OptionItem::TYPE_PARAM,  STR_OPT_LANGUAGE,  SETTINGS( audio.language  ), STR_LANG_EN, 0, STR_LANG_SV - STR_LANG_EN ),
 #endif
 };
-
-#if defined(_OS_PSP) || defined(_OS_PSV) || defined(_OS_3DS) || defined(_OS_GCW0) || defined(_OS_CLOVER) || defined(_OS_PSC) || defined(_OS_XBOX) || defined(_OS_DC)
-    #define INV_GAMEPAD_ONLY
-#endif
-
-#if defined(_OS_PSP) || defined(_OS_PSV) || defined(_OS_3DS) || defined(_OS_GCW0) || defined(_OS_DC)
-    #define INV_SINGLE_PLAYER
-#endif
-
-#if defined(_OS_PSP) || defined(_OS_PSV) || defined(_OS_3DS) || defined(_OS_CLOVER)
-    #define INV_GAMEPAD_NO_TRIGGER
-#endif
-
-#ifdef INV_SINGLE_PLAYER
-    #define INV_CTRL_START_OPTION 1
-#else
-    #define INV_CTRL_START_OPTION 2
-#endif
-
-#if defined(_OS_WIN) || defined(_OS_LINUX) || defined(_OS_RPI) || defined(_OS_GCW0) || defined(_OS_XBOX)
-    #define INV_VIBRATION
-#endif
 
 static const OptionItem optControls[] = {
     OptionItem( OptionItem::TYPE_TITLE,  STR_SET_CONTROLS ),
@@ -199,7 +185,7 @@ static const OptionItem optControls[] = {
     OptionItem( OptionItem::TYPE_PARAM,  STR_OPT_CONTROLS_RETARGET   , SETTINGS( controls[0].retarget           ), STR_OFF,       0, 1 ),
     OptionItem( OptionItem::TYPE_PARAM,  STR_OPT_CONTROLS_MULTIAIM   , SETTINGS( controls[0].multiaim           ), STR_OFF,       0, 1 ),
 #ifdef INV_GAMEPAD_ONLY
-    OptionItem( OptionItem::TYPE_PARAM,  STR_EMPTY                   , SETTINGS( playerIndex                    ), STR_OPT_CONTROLS_GAMEPAD,  0, 0 ),
+    OptionItem( OptionItem::TYPE_PARAM,  STR_EMPTY                   , SETTINGS( ctrlIndex                      ), STR_OPT_CONTROLS_KEYBOARD, 0, 0xFF ),
 #else
     OptionItem( OptionItem::TYPE_PARAM,  STR_EMPTY                   , SETTINGS( ctrlIndex                      ), STR_OPT_CONTROLS_KEYBOARD, 0, 1 ),
 #endif
@@ -499,14 +485,14 @@ struct Inventory {
                 case cUp     : nextSlot(slot, -1); break;
                 case cDown   : nextSlot(slot, +1); break;
                 case cLeft   :
-                    if (opt->type == OptionItem::TYPE_PARAM && opt->checkValue(value - 1)) {
+                    if (opt->type == OptionItem::TYPE_PARAM && (opt->maxValue != 0xFF) && opt->checkValue(value - 1)) {
                         value--;
                         timer = 0.2f;
                         return opt;
                     }    
                     break;
                 case cRight  :
-                    if (opt->type == OptionItem::TYPE_PARAM && opt->checkValue(value + 1)) {
+                    if (opt->type == OptionItem::TYPE_PARAM && (opt->maxValue != 0xFF) && opt->checkValue(value + 1)) {
                         value++;
                         timer = 0.2f;
                         return opt;
@@ -1421,6 +1407,9 @@ struct Inventory {
     #ifdef FFP
         return; // TODO
     #endif
+    #ifdef _GAPI_TA
+        return;
+    #endif
         game->setShader(Core::passFilter, Shader::FILTER_BLUR, false, false);
         float s = 1.0f / INV_BG_SIZE;
         // vertical
@@ -1442,6 +1431,7 @@ struct Inventory {
     #ifdef FFP
         return; // TODO
     #endif
+
         float s = 1.0f / INV_BG_SIZE;
         game->setShader(Core::passFilter, Shader::FILTER_GRAYSCALE, false, false);
         Core::setTarget(texOut, NULL, RT_STORE_COLOR);
@@ -1452,9 +1442,9 @@ struct Inventory {
     }
 
     void prepareBackground() {
-    #ifdef FFP
-        return;
-    #endif
+        #ifdef FFP
+            return;
+        #endif
 
         if (Core::settings.detail.stereo == Core::Settings::STEREO_VR)
             return;
@@ -1463,9 +1453,9 @@ struct Inventory {
             return;
         #endif
 
-    #ifdef _OS_3DS
-        GAPI::rotate90 = false;
-    #endif
+        #ifdef _OS_3DS
+            GAPI::rotate90 = false;
+        #endif
 
         game->renderGame(false, true);
 
@@ -1486,9 +1476,9 @@ struct Inventory {
             swap(background[view], background[2]);
         }
 
-    #ifdef _OS_3DS
-        GAPI::rotate90 = true;
-    #endif
+        #ifdef _OS_3DS
+            GAPI::rotate90 = true;
+        #endif
 
         Core::setDepthTest(true);
     }
@@ -1749,6 +1739,11 @@ struct Inventory {
         }
 
         float aspectDst = float(Core::width) / float(Core::height) * Core::aspectFix;
+
+        #ifdef _OS_WP8
+            aspectDst = 1.0f / aspectDst;
+        #endif
+
         float aspectImg = aspectSrc / aspectDst;
 
         #ifdef FFP
@@ -1867,7 +1862,6 @@ struct Inventory {
         m.identity();
         Core::setViewProj(m, m);
         Core::mModel.identity();
-
     #else
         if (Core::settings.detail.stereo == Core::Settings::STEREO_VR || !background[0]) {
             backTex = Core::blackTex; // black background 
@@ -2090,7 +2084,7 @@ struct Inventory {
             const char *bSelect = STR[STR_KEY_FIRST + ikEnter];
             const char *bBack   = STR[STR_KEY_FIRST + Core::settings.controls[playerIndex].keys[cInventory].key];
 
-            #if defined(_OS_SWITCH) || defined(_OS_3DS) || defined(_OS_GCW0) || defined(_OS_XBOX) || defined(_OS_DC)
+            #if defined(_OS_SWITCH) || defined(_OS_3DS) || defined(_OS_GCW0) || defined(_OS_XBOX) || defined(_OS_XB1) || defined(_OS_DC)
                 bSelect = "A";
                 bBack   = "B";
             #endif

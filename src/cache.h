@@ -12,6 +12,10 @@
     #define USE_SCREEN_TEX
 #endif
 
+#if defined(_GAPI_D3D8) || defined(_GAPI_D3D9) || defined(_GAPI_D3D11)
+    #define EARLY_CLEAR
+#endif
+
 struct ShaderCache {
     enum Effect { FX_NONE = 0, FX_UNDERWATER = 1, FX_ALPHA_TEST = 2 };
 
@@ -86,8 +90,8 @@ struct ShaderCache {
     void prepareSky(int fx) {
         compile(Core::passSky, Shader::DEFAULT, fx, rsBase);
         if (Core::support.tex3D) {
-            compile(Core::passSky, Shader::SKY_CLOUDS,       fx, rsBase);
-            compile(Core::passSky, Shader::SKY_CLOUDS_AZURE, fx, rsBase);
+            compile(Core::passSky, Shader::SKY_CLOUDS, fx, rsBase);
+            compile(Core::passSky, Shader::SKY_AZURE,  fx, rsBase);
         }
     }
 
@@ -123,7 +127,7 @@ struct ShaderCache {
         if (rs & RS_DISCARD)
             fx |= FX_ALPHA_TEST;
 
-    #ifndef FFP
+    #if !defined(FFP) && !defined(_GAPI_TA)
         if (shaders[pass][type][fx])
             return shaders[pass][type][fx];
 
@@ -180,7 +184,7 @@ struct ShaderCache {
 
     Shader *getShader(Core::Pass pass, Shader::Type type, int fx) {
         Shader *shader = shaders[pass][type][fx];
-    #ifndef FFP
+    #if !defined(FFP) && !defined(_GAPI_TA)
         if (shader == NULL)
             LOG("! NULL shader: %d %d %d\n", int(pass), int(type), int(fx));
         ASSERT(shader != NULL);
@@ -976,6 +980,10 @@ struct WaterCache {
         game->setShader(Core::passGUI, Shader::DEFAULT);
 
         mat4 mProj = GAPI::ortho(0.0f, float(tex->origWidth), 0.0f, float(tex->origHeight), 0.0f, 1.0f);
+
+    #ifdef _OS_WP8
+        mProj.unrot90();
+    #endif
 
         Core::active.shader->setParam(uViewProj, mProj);
         Core::active.shader->setParam(uMaterial, vec4(1.0f));

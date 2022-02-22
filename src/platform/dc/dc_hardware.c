@@ -315,10 +315,11 @@ void dc_init_hardware()
 
 }
 
-void *get_romfont_address() __asm__(".get_romfont_address");
+extern void *get_romfont_address();
 __asm__("\
 			\n\
-.get_romfont_address:	\n\
+.globl _romfont_address \n\
+_get_romfont_address:	\n\
     mov.l 1f,r0		\n\
     mov.l @r0,r0	\n\
     jmp @r0		\n\

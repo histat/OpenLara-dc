@@ -44,7 +44,7 @@ struct Camera : ICamera {
     Frustum    *frustum;
 
     float       fov, aspect, znear, zfar;
-    vec3        lookAngle, targetAngle;
+    vec3        lookAngle, targetAngle, viewAngle;
     mat4        mViewInv;
 
     float       timer;
@@ -69,6 +69,7 @@ struct Camera : ICamera {
 
         spectator = false;
         specTimer = 0.0f;
+        targetAngle = vec3(0.0f);
     }
 
     void reset() {
@@ -366,6 +367,8 @@ struct Camera : ICamera {
             speed = CAM_SPEED_COMBAT;
         }
 
+        viewAngle = vec3(0.0f);
+
         if (mode == MODE_CUTSCENE) {
             ASSERT(level->cameraFramesCount && level->cameraFrames);
 
@@ -386,31 +389,33 @@ struct Camera : ICamera {
                 }
             }
 
-            if (!firstPerson) {
-                TR::CameraFrame *frameA = &level->cameraFrames[indexA];
-                TR::CameraFrame *frameB = &level->cameraFrames[indexB];
+            if (!spectator) {
+                if (!firstPerson) {
+                    TR::CameraFrame *frameA = &level->cameraFrames[indexA];
+                    TR::CameraFrame *frameB = &level->cameraFrames[indexB];
 
-                const float maxDelta = 512 * 512;
+                    const float maxDelta = 512 * 512;
 
-                float dp = (vec3(frameA->pos) - vec3(frameB->pos)).length2();
-                float dt = (vec3(frameA->target) - vec3(frameB->target)).length2();
+                    float dp = (vec3(frameA->pos) - vec3(frameB->pos)).length2();
+                    float dt = (vec3(frameA->target) - vec3(frameB->target)).length2();
 
-                if (dp > maxDelta || dt > maxDelta) {
-                    eye.pos    = frameA->pos;
-                    target.pos = frameA->target;
-                    fov        = frameA->fov / 32767.0f * 120.0f;
-                } else {
-                    eye.pos    = vec3(frameA->pos).lerp(frameB->pos, t);
-                    target.pos = vec3(frameA->target).lerp(frameB->target, t);
-                    fov        = lerp(frameA->fov / 32767.0f * 120.0f, frameB->fov / 32767.0f * 120.0f, t);
-                }
+                    if (dp > maxDelta || dt > maxDelta) {
+                        eye.pos    = frameA->pos;
+                        target.pos = frameA->target;
+                        fov        = frameA->fov / 32767.0f * 120.0f;
+                    } else {
+                        eye.pos    = vec3(frameA->pos).lerp(frameB->pos, t);
+                        target.pos = vec3(frameA->target).lerp(frameB->target, t);
+                        fov        = lerp(frameA->fov / 32767.0f * 120.0f, frameB->fov / 32767.0f * 120.0f, t);
+                    }
 
-                eye.pos    = level->cutMatrix * eye.pos;
-                target.pos = level->cutMatrix * target.pos;
+                    eye.pos    = level->cutMatrix * eye.pos;
+                    target.pos = level->cutMatrix * target.pos;
 
-                mViewInv   = mat4(eye.pos, target.pos, vec3(0, -1, 0));
-            } else
-                updateFirstPerson();
+                    mViewInv = mat4(eye.pos, target.pos, vec3(0, -1, 0));
+                } else
+                    updateFirstPerson();
+            }
         } else {
             if (Core::settings.detail.stereo == Core::Settings::STEREO_VR) {
                 lookAngle = vec3(0.0f);
@@ -418,7 +423,7 @@ struct Camera : ICamera {
                 if (mode == MODE_LOOK) {
                     float d = 3.0f * Core::deltaTime;
 
-                    vec2 L = Input::joy[cameraIndex].L;
+                    vec2 L = Input::joy[Core::settings.controls[cameraIndex].joyIndex].L;
                     L = L.normal() * max(0.0f, L.length() - INPUT_JOY_DZ_STICK) / (1.0f - INPUT_JOY_DZ_STICK);
 
                     lookAngle.x += L.y * d;
@@ -431,7 +436,7 @@ struct Camera : ICamera {
 
                     lookAngle.x = clamp(lookAngle.x,  CAM_LOOK_ANGLE_XMIN, CAM_LOOK_ANGLE_XMAX);
                     lookAngle.y = clamp(lookAngle.y, -CAM_LOOK_ANGLE_Y,    CAM_LOOK_ANGLE_Y);
-                } else
+                } else {
                     if (lookAngle.x != CAM_FOLLOW_ANGLE || lookAngle.y != 0.0f) {
                         float t = 10.0f * Core::deltaTime;
                         lookAngle.x = lerp(clampAngle(lookAngle.x), CAM_FOLLOW_ANGLE, t);
@@ -439,9 +444,20 @@ struct Camera : ICamera {
                         if (fabsf(lookAngle.x - CAM_FOLLOW_ANGLE) < EPS) lookAngle.x = CAM_FOLLOW_ANGLE;
                         if (lookAngle.y < EPS) lookAngle.y = 0.0f;
                     }
+
+                    if (!spectator) {
+                        vec2 R = Input::joy[Core::settings.controls[cameraIndex].joyIndex].R;
+                        R.x = sign(R.x) * max(0.0f, (fabsf(R.x) - INPUT_JOY_DZ_STICK) / (1.0f - INPUT_JOY_DZ_STICK));
+                        R.y = sign(R.y) * max(0.0f, (fabsf(R.y) - INPUT_JOY_DZ_STICK) / (1.0f - INPUT_JOY_DZ_STICK));
+
+                        viewAngle.x = -R.y * PI * 0.375f;
+                        viewAngle.y = R.x * PI * 0.5f;
+                        viewAngle.z = 0.0f;
+                    }
+                }
             }
 
-            targetAngle = owner->angle + lookAngle;
+            targetAngle = owner->angle + lookAngle + viewAngle;
 
             targetAngle.x = clampAngle(targetAngle.x);
             targetAngle.y = clampAngle(targetAngle.y);
@@ -503,7 +519,7 @@ struct Camera : ICamera {
                     if (mode == MODE_LOOK)
                         offset = CAM_OFFSET_LOOK;
                     else 
-                        offset = (mode == MODE_COMBAT ? CAM_OFFSET_COMBAT : CAM_OFFSET_FOLLOW) * cosf(targetAngle.x);
+                        offset = (mode == MODE_COMBAT ? CAM_OFFSET_COMBAT : CAM_OFFSET_FOLLOW);
 
                     vec3 dir = vec3(targetAngle.x, targetAngle.y) * offset;
                     to.pos  = target.pos - dir;
@@ -545,6 +561,7 @@ struct Camera : ICamera {
         if (specJoy.down[jkL] && specJoy.down[jkR]) {
             specTimer += Core::deltaTime;
             if (specTimer > SPECTATOR_TIMER) {
+                firstPerson = false;
                 spectator = !spectator;
                 specTimer = 0.0f;
                 specPos   = eye.pos;
@@ -665,6 +682,10 @@ struct Camera : ICamera {
     }
 
     void setOblique(const vec4 &clipPlane) { // http://www.terathon.com/code/oblique.html
+    #ifdef _OS_WP8
+        Core::mProj.unrot90();
+    #endif
+
         vec4 p = Core::mViewInv.transpose() * clipPlane;
 
         vec4 q;
@@ -681,6 +702,10 @@ struct Camera : ICamera {
         Core::mProj.e21 = c.y;
         Core::mProj.e22 = c.z + (f - 1.0f);
         Core::mProj.e23 = c.w;
+
+    #ifdef _OS_WP8
+        Core::mProj.rot90();
+    #endif
     }
 
     void changeView(bool firstPerson) {

@@ -148,7 +148,9 @@ varying vec4 vTexCoord; // xy - atlas coords, zw - trapezoidal correction
 
 		#ifdef TYPE_FLASH
 			vDiffuse.xyz += uMaterial.w;
-		#else
+		#endif
+
+		#ifdef TYPE_ENTITY
 			vDiffuse *= uMaterial.w;
 		#endif
 
@@ -247,10 +249,10 @@ varying vec4 vTexCoord; // xy - atlas coords, zw - trapezoidal correction
 
 #else
 
-	uniform sampler2D sDiffuse;
-
 	#ifdef TYPE_MIRROR
-		uniform samplerCube sEnvironment;
+		uniform samplerCube sDiffuse;
+	#else
+		uniform sampler2D sDiffuse;
 	#endif
 
 	float unpack(vec4 value) {
@@ -260,11 +262,7 @@ varying vec4 vTexCoord; // xy - atlas coords, zw - trapezoidal correction
 	#ifdef OPT_SHADOW
 		#ifdef SHADOW_SAMPLER
 			uniform sampler2DShadow sShadow;
-			#ifdef USE_GL_EXT_shadow_samplers
-				#define SHADOW(V) (shadow2DEXT(sShadow, V))
-			#else
-				#define SHADOW(V) (shadow2D(sShadow, V).x)
-			#endif
+			#define SHADOW(p) (FETCH_SHADOW2D(sShadow, p))
 		#else
 			uniform sampler2D sShadow;
 
@@ -356,7 +354,7 @@ varying vec4 vTexCoord; // xy - atlas coords, zw - trapezoidal correction
 		vec4 color;
 		#ifdef TYPE_MIRROR
 			vec3 rv = reflect(-normalize(vViewVec.xyz), normalize(vNormal.xyz));
-			color = textureCube(sEnvironment, normalize(rv));
+			color = textureCube(sDiffuse, normalize(rv));
 		#else
 			#ifndef TYPE_SPRITE
 				#ifdef OPT_TRAPEZOID

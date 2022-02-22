@@ -27,7 +27,7 @@ int osGetTimeMS() {
 
 // sound
 #define SND_FRAME_SIZE  4
-#define SND_DATA_SIZE   (1024 * SND_FRAME_SIZE)
+#define SND_DATA_SIZE   (2352 * SND_FRAME_SIZE)
 
 pa_simple *sndOut;
 pthread_t sndThread;
@@ -78,7 +78,7 @@ void sndFree() {
 }
 
 // Input
-InputKey keyToInputKey(XKeyEvent event) {
+InputKey keyToInputKey(Display *dpy, XKeyEvent event) {
     KeySym code = XLookupKeysym(&event, 0);
 
     if (code == XK_Shift_R)   code = XK_Shift_L;
@@ -96,7 +96,7 @@ InputKey keyToInputKey(XKeyEvent event) {
     };
 
     for (int i = 0; i < COUNT(codes); i++) {
-        if (codes[i] == code) {
+        if (XKeysymToKeycode(dpy, codes[i]) == event.keycode) {
             return (InputKey)(ikLeft + i);
         }
     }
@@ -338,7 +338,7 @@ void toggle_fullscreen(Display* dpy, Window win) {
     XSendEvent(dpy, DefaultRootWindow(dpy), False, SubstructureNotifyMask, &xev);
 }
 
-void WndProc(const XEvent &e,Display*dpy,Window wnd) {
+void WndProc(const XEvent &e, Display* dpy, Window wnd) {
     switch (e.type) {
         case ConfigureNotify :
             Core::width  = e.xconfigure.width;
@@ -350,7 +350,7 @@ void WndProc(const XEvent &e,Display*dpy,Window wnd) {
                 toggle_fullscreen(dpy,wnd);
                 break;
             }
-            Input::setDown(keyToInputKey(e.xkey), e.type == KeyPress);
+            Input::setDown(keyToInputKey(dpy, e.xkey), e.type == KeyPress);
             break;
         case ButtonPress :
         case ButtonRelease : {
@@ -387,6 +387,8 @@ int checkLanguage() {
     if (id == TWOCC("fi")) return STR_LANG_FI - STR_LANG_EN;
     if (id == TWOCC("cs")) return STR_LANG_CZ - STR_LANG_EN;
     if (id == TWOCC("zh")) return STR_LANG_CN - STR_LANG_EN;
+    if (id == TWOCC("hu")) return STR_LANG_HU - STR_LANG_EN;
+    if (id == TWOCC("sv")) return STR_LANG_SV - STR_LANG_EN;
 
     return 0;
 }
@@ -455,7 +457,7 @@ int main(int argc, char **argv) {
             XNextEvent(dpy, &event);
             if (event.type == ClientMessage && *event.xclient.data.l == WM_DELETE_WINDOW)
                 Core::quit();
-            WndProc(event,dpy,wnd);
+            WndProc(event, dpy, wnd);
         } else {
             joyUpdate();
 			bool updated = Game::update();

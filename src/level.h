@@ -66,6 +66,7 @@ struct Level : IGame {
     bool needRenderInventory;
     bool showStats;
     bool skyIsVisible;
+    bool paused;
 
     TR::LevelID nextLevel;
 
@@ -345,6 +346,11 @@ struct Level : IGame {
                 controller->next = NULL;
                 controller->flags.state = TR::Entity::asNone;
                 if (i >= level.entitiesBaseCount) {
+
+                    if (e.type == TR::Entity::ENEMY_SKATEBOARD) {
+                        continue;
+                    }
+
                     delete controller;
                     e.controller = NULL;
                 }
@@ -396,7 +402,7 @@ struct Level : IGame {
         Stream::cacheWrite("settings", (char*)&settings, sizeof(settings));
 
         if (rebuildShaders) {
-        #if !defined(_GAPI_D3D9) && !defined(_GAPI_D3D11) && !defined(_GAPI_GXM)
+        #if !defined(_GAPI_D3D8) && !defined(_GAPI_D3D9) && !defined(_GAPI_D3D11) && !defined(_GAPI_GXM)
             delete shaderCache;
             shaderCache = new ShaderCache();
         #endif
@@ -531,7 +537,7 @@ struct Level : IGame {
             alphaTest = true;
         }
 
-    #ifdef FFP
+    #if defined(FFP) || defined(_GAPI_TA)
         switch (type) {
             case Shader::SPRITE :
             case Shader::ROOM   :
@@ -595,11 +601,10 @@ struct Level : IGame {
     }
 
     virtual void setupBinding() {
-        atlasRooms->bind(sDiffuse);
         Core::whiteTex->bind(sNormal);
         Core::whiteTex->bind(sMask);
         Core::whiteTex->bind(sReflect);
-        Core::whiteCube->bind(sEnvironment);
+        atlasRooms->bind(sDiffuse);
 
         if (Core::pass != Core::passShadow) {
             Texture *shadowMap = shadow[player ? player->camera->cameraIndex : 0];
@@ -610,18 +615,25 @@ struct Level : IGame {
     }
 
     virtual void renderEnvironment(int roomIndex, const vec3 &pos, Texture **targets, int stride = 0, Core::Pass pass = Core::passAmbient) {
-    #ifdef FFP
-        return;
-    #endif
+        #ifdef FFP
+            return;
+        #endif
 
-    #ifdef _GAPI_SW
-        return;
-    #endif
+        #ifdef _GAPI_SW
+            return;
+        #endif
 
-    #ifdef _OS_3DS
-        return; // TODO render to cubemap face
-        GAPI::rotate90 = false;
-    #endif
+        #ifdef _GAPI_TA
+            return;
+        #endif
+
+        #ifdef _GAPI_C3D
+            GAPI::rotate90 = false;
+        #endif
+
+        #ifdef _GAPI_D3D8
+            GAPI::setFrontFace(false);
+        #endif
 
         PROFILE_MARKER("ENVIRONMENT");
         setupBinding();
@@ -644,9 +656,13 @@ struct Level : IGame {
             renderView(rIndex, false, false);
         }
 
-    #ifdef _OS_3DS
-        GAPI::rotate90 = true;
-    #endif
+        #ifdef _GAPI_D3D8
+            GAPI::setFrontFace(true);
+        #endif
+
+        #ifdef _GAPI_C3D
+            GAPI::rotate90 = true;
+        #endif
 
         Core::pass = tmpPass;
         Core::eye  = tmpEye;
@@ -662,6 +678,7 @@ struct Level : IGame {
         Core::setBasis(joints, level.models[modelIndex].mCount);
         Core::active.shader->setParam(uMaterial, Core::active.material);
         Core::active.shader->setParam(uAmbient, ambient[0], 6);
+        Core::setFog(FOG_NONE);
         Core::updateLights();
         mesh->renderModel(modelIndex, underwater);
         // transparent
@@ -670,6 +687,7 @@ struct Level : IGame {
         Core::setBasis(joints, level.models[modelIndex].mCount);
         Core::active.shader->setParam(uMaterial, Core::active.material);
         Core::active.shader->setParam(uAmbient, ambient[0], 6);
+        Core::setFog(FOG_NONE);
         Core::updateLights();
         mesh->renderModel(modelIndex, underwater);
         // additive
@@ -680,6 +698,7 @@ struct Level : IGame {
         Core::setBasis(joints, level.models[modelIndex].mCount);
         Core::active.shader->setParam(uMaterial, Core::active.material);
         Core::active.shader->setParam(uAmbient, ambient[0], 6);
+        Core::setFog(FOG_NONE);
         Core::updateLights();
         mesh->renderModel(modelIndex, underwater);
         Core::setDepthWrite(true);
@@ -922,6 +941,8 @@ struct Level : IGame {
 //==============================
 
     Level(Stream &stream) : level(stream), waitTrack(false), isEnded(false), cutsceneWaitTimer(0.0f), animTexTimer(0.0f), statsTimeDelta(0.0f) {
+        paused = false;
+
         level.simpleItems = Core::settings.detail.simple == 1;
         level.initModelIndices();
 
@@ -1001,6 +1022,27 @@ struct Level : IGame {
         }
         */
 
+    #if DUMP_SAMPLES
+        for (int i = 0; i < 256; i++) {
+            int16 a = level.soundsMap[i];
+            if (a == -1) continue;
+            ASSERT(a < level.soundsInfoCount);
+            TR::SoundInfo &b = level.soundsInfo[a];
+            for (int j = 0; j < b.flags.count; j++) {
+                //ASSERT((b.index + j) < level.soundOffsetsCount);
+                if ((b.index + j) < level.soundOffsetsCount) {
+                    Debug::Level::dumpSample(&level, b.index + j, i, j);
+                }
+            }
+        }
+        loadNextLevel();
+    #endif
+
+    #if DUMP_PALETTE
+        Debug::Level::dumpPalette(&level, level.id);
+        loadNextLevel();
+    #endif
+
         saveResult = SAVE_RESULT_SUCCESS;
         if (loadSlot != -1 && saveSlots[loadSlot].getLevelID() == level.id) {
             parseSaveSlot(saveSlots[loadSlot]);
@@ -1028,7 +1070,7 @@ struct Level : IGame {
         delete zoneCache;
 
         delete atlasRooms;
-        #ifndef FFP
+        #ifndef SPLIT_BY_TILE
             delete atlasObjects;
             delete atlasSprites;
             delete atlasGlyphs;
@@ -1067,6 +1109,14 @@ struct Level : IGame {
     void addPlayer(int index) {
         if (level.isCutsceneLevel()) return;
 
+        Controller *c = Controller::first;
+        while (c) {
+            Controller *next = c->next;
+            if (c->getEntity().type == TR::Entity::FLAME && ((Flame*)c)->owner == players[index])
+                removeEntity(c);
+            c = next;
+        }
+
         if (!players[index]) {
             players[index] = (Lara*)addEntity(TR::Entity::LARA, 0, vec3(0.0f), 0.0f);
             players[index]->camera->cameraIndex = index;
@@ -1080,14 +1130,6 @@ struct Level : IGame {
         Lara *lead = players[index ^ 1];
         if (!lead) return;
 
-        Controller *c = Controller::first;
-        while (c) {
-            Controller *next = c->next;
-            if (c->getEntity().type == TR::Entity::FLAME && ((Flame*)c)->owner == players[index])
-                removeEntity(c);
-            c = next;
-        }
-
         players[index]->reset(lead->getRoomIndex(), lead->pos, lead->angle.y, lead->stand);
     }
 
@@ -1100,6 +1142,7 @@ struct Level : IGame {
                 }
             }
         }
+
         removeEntity(players[index]);
         players[index] = NULL;
     }
@@ -1649,7 +1692,7 @@ struct Level : IGame {
         tileData = new AtlasTile();
         
         atlasRooms   = rAtlas->pack(OPT_MIPMAPS | OPT_VRAM_3DS);
-        atlasObjects = oAtlas->pack(OPT_MIPMAPS | OPT_VRAM_3DS);
+        atlasObjects = oAtlas->pack(OPT_MIPMAPS);
         atlasSprites = sAtlas->pack(OPT_MIPMAPS);
         atlasGlyphs  = gAtlas->pack(0);
 
@@ -1796,12 +1839,18 @@ struct Level : IGame {
             TR::Entity &e = level.entities[i];
             if (e.type == TR::Entity::CRYSTAL) {
                 Crystal *c = (Crystal*)e.controller;
-                renderEnvironment(c->getRoomIndex(), c->pos - vec3(0, 512, 0), &c->environment);
-                #ifdef USE_CUBEMAP_MIPS
-                    c->environment->generateMipMap();
-                #endif
+                if (c->environment) { // already initialized and baked
+                    continue;
+                }
+                c->bake();
+
+            #ifdef _GAPI_C3D
+                // C3D has a limit of GX commands for buffers clearing (GX_MemoryFill), so we limit render to one cubemap per frame
+                return;
+            #endif
             }
         }
+        needRedrawReflections = false;
     }
 
     void setMainLight(Controller *controller) {
@@ -1810,7 +1859,7 @@ struct Level : IGame {
     }
 
     void renderSky() {
-        #ifndef _GAPI_GL
+        #if !defined(_GAPI_GL) && !defined(_GAPI_D3D11)
             return;
         #endif
         ASSERT(mesh->transparent == 0);
@@ -1821,7 +1870,7 @@ struct Level : IGame {
         if (level.version & TR::VER_TR1) {
             if (Core::settings.detail.lighting < Core::Settings::HIGH || !Core::support.tex3D || !TR::getSkyParams(level.id, skyParams))
                 return;
-            type = Shader::SKY_CLOUDS_AZURE;
+            type = Shader::SKY_AZURE;
         } else { // TR2, TR3
             if (level.extra.sky == -1)
                 return;
@@ -1859,7 +1908,7 @@ struct Level : IGame {
                 time = (time - int(time)) * SKY_TIME_PERIOD;
             }
 
-            Core::active.shader->setParam(uParam,     vec4(skyParams.wind * time, 1.0));
+            Core::active.shader->setParam(uParam,     vec4(skyParams.wind * time * 2.0f, 1.0));
             Core::active.shader->setParam(uLightProj, *(mat4*)&skyParams);
             Core::active.shader->setParam(uPosScale,  skyParams.cloudDownColor, 2);
 
@@ -2222,25 +2271,35 @@ struct Level : IGame {
                 }
             }
 
-            params->time += Core::deltaTime;
-            animTexTimer += Core::deltaTime;
-
-            float timeStep = ANIM_TEX_TIMESTEP;
-            if (level.version & TR::VER_TR1)
-                timeStep *= 0.5f;
-
-            if (animTexTimer > timeStep) {
-                level.shiftAnimTex();
-                animTexTimer -= timeStep;
+            if (camera->spectator && Input::lastState[0] == cStart) {
+                paused = !paused;
             }
 
-            updateEffect();
+            if (!paused) {
+                params->time += Core::deltaTime;
+                animTexTimer += Core::deltaTime;
 
-            Controller *c = Controller::first;
-            while (c) {
-                Controller *next = c->next;
-                c->update();
-                c = next;
+                float timeStep = ANIM_TEX_TIMESTEP;
+                if (level.version & TR::VER_TR1)
+                    timeStep *= 0.5f;
+
+                if (animTexTimer > timeStep) {
+                    level.shiftAnimTex();
+                    animTexTimer -= timeStep;
+                }
+
+                updateEffect();
+
+                Controller *c = Controller::first;
+                while (c) {
+                    Controller *next = c->next;
+                    c->update();
+                    c = next;
+                }
+            } else {
+                if (camera->spectator) {
+                    camera->update();
+                }
             }
 
             if (waterCache) 
@@ -2610,7 +2669,18 @@ struct Level : IGame {
         Texture *screen = NULL;
         if (water) {
             screen = (waterCache && waterCache->visible) ? waterCache->getScreenTex() : NULL;
-            Core::setTarget(screen, NULL, RT_CLEAR_COLOR | RT_CLEAR_DEPTH | RT_STORE_COLOR | (screen ? RT_STORE_DEPTH : 0)); // render to screen texture (FUCK YOU iOS!) or back buffer
+
+            int clearFlags = RT_STORE_COLOR;
+
+            if (screen) {
+                clearFlags |= RT_CLEAR_COLOR | RT_CLEAR_DEPTH | RT_STORE_DEPTH;
+            }
+
+            #ifndef EARLY_CLEAR
+                clearFlags |= RT_CLEAR_COLOR | RT_CLEAR_DEPTH;
+            #endif
+
+            Core::setTarget(screen, NULL, clearFlags); // render to screen texture or back buffer
             Core::validateRenderState();
             setupBinding();
         }
@@ -2651,7 +2721,7 @@ struct Level : IGame {
         Core::Pass pass = Core::pass;
 
         if (water && waterCache && waterCache->visible && screen) {
-            Core::setTarget(NULL, NULL, RT_STORE_COLOR);
+            Core::setTarget(NULL, NULL, RT_CLEAR_DEPTH | RT_STORE_COLOR);
             Core::validateRenderState();
             waterCache->blitTexture(screen);
         }
@@ -2678,6 +2748,11 @@ struct Level : IGame {
         Core::mViewInv  = mat4(pos, pos + dir, up);
         Core::mView     = Core::mViewInv.inverseOrtho();
         Core::mProj     = GAPI::perspective(90, 1.0f, 32.0f, 45.0f * 1024.0f, 0.0f);
+
+        #ifdef _GAPI_D3D8
+            Core::mProj.scale(vec3(1.0f, -1.0f, 1.0f));
+        #endif
+
         Core::mViewProj = Core::mProj * Core::mView;
         Core::viewPos   = Core::mViewInv.offset().xyz();
 
@@ -2702,7 +2777,7 @@ struct Level : IGame {
         if (GAPI::getProjRange() == mat4::PROJ_ZERO_POS)
             bias = mat4(
                 0.5f, 0.0f, 0.0f, 0.0f,
-                0.0f,-0.5f, 0.0f, 0.0f,
+                0.0f, 0.5f, 0.0f, 0.0f,
                 0.0f, 0.0f, 1.0f, 0.0f,
                 0.5f, 0.5f, 0.0f, 1.0f
             );
@@ -2714,6 +2789,10 @@ struct Level : IGame {
                 0.5f, 0.5f, 0.5f, 1.0f
             );
         }
+
+    #if defined(_GAPI_D3D8) || defined(_GAPI_D3D9) || defined(_GAPI_D3D11) || defined(_GAPI_GXM)
+        bias.e11 = -bias.e11; // vertical flip for UVs
+    #endif
 
         m = bias * m;
 
@@ -2970,17 +3049,17 @@ struct Level : IGame {
             Core::setDepthTest(false);
             Core::validateRenderState();
         //    Debug::Level::rooms(level, lara->pos, lara->getEntity().room);
-        //     Debug::Level::lights(level, player->getRoomIndex(), player);
+        //    Debug::Level::lights(level, player->getRoomIndex(), player);
         //    Debug::Level::sectors(this, players[0]->getRoomIndex(), (int)players[0]->pos.y);
         //    Core::setDepthTest(false);
         //    Debug::Level::portals(level);
         //    Core::setDepthTest(true);
         //    Debug::Level::meshes(level);
         //    Debug::Level::entities(level);
-        //    Debug::Level::zones(level, lara);
+        //    Debug::Level::zones(this, players[0]);
         //    Debug::Level::blocks(level);
-        //    Debug::Level::path(level, (Enemy*)level.entities[105].controller);
-        //    Debug::Level::debugOverlaps(level, lara->box);
+        //    Debug::Level::path(level, (Enemy*)level.entities[21].controller);
+        //    Debug::Level::debugOverlaps(level, players[0]->box);
         //    Debug::Level::debugBoxes(level, lara->dbgBoxes, lara->dbgBoxesCount);
             Core::setDepthTest(true);
             Core::setBlendMode(bmNone);
@@ -3157,7 +3236,6 @@ struct Level : IGame {
 
         if (needRedrawReflections) {
             initReflections();
-            needRedrawReflections = false;
         }
 
         if (ambientCache) {
@@ -3203,6 +3281,19 @@ struct Level : IGame {
             #endif
             }
         }
+
+        if (Core::defaultTarget) {
+            Core::viewportDef = short4(0, 0, Core::defaultTarget->origWidth, Core::defaultTarget->origHeight);
+        } else {
+            Core::viewportDef = short4(0, 0, Core::width, Core::height);
+        }
+
+        #ifdef EARLY_CLEAR
+            if (view == 0 && eye <= 0) {
+                Core::setTarget(NULL, NULL, RT_CLEAR_COLOR | RT_CLEAR_DEPTH | RT_STORE_COLOR | RT_STORE_DEPTH);
+                Core::validateRenderState();
+            }
+        #endif
     }
 
     void renderEye(int eye, bool showUI, bool invBG) {
@@ -3354,7 +3445,7 @@ struct Level : IGame {
 
         Core::resetLights();
 
-        if (!level.isCutsceneLevel()) {
+        if (!level.isCutsceneLevel() && !camera->spectator) {
         // render health & oxygen bars
             vec2 size = vec2(180, 10);
 
@@ -3391,7 +3482,9 @@ struct Level : IGame {
             UI::renderHelp();
         }
 
-        UI::renderSubs();
+        if (!camera->spectator) {
+            UI::renderSubs();
+        }
 
         UI::end();
 

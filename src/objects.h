@@ -153,9 +153,9 @@ struct Flame : Sprite {
 
     Controller *owner;
     int32 jointIndex;
-    float sleep;
+    float sleepTime;
 
-    Flame(IGame *game, int entity) : Sprite(game, entity, false, Sprite::FRAME_ANIMATED), owner(NULL), jointIndex(0), sleep(0.0f) {
+    Flame(IGame *game, int entity) : Sprite(game, entity, false, Sprite::FRAME_ANIMATED), owner(NULL), jointIndex(0), sleepTime(0.0f) {
         time = randf() * 3.0f;
         activate();
     }
@@ -186,15 +186,15 @@ struct Flame : Sprite {
             lara->hit(FLAME_BURN_DAMAGE * Core::deltaTime, this);
         } else 
             if (lara->health > 0.0f) {
-                if (sleep > 0.0f)
-                    sleep = max(0.0f, sleep - Core::deltaTime);
+                if (sleepTime > 0.0f)
+                    sleepTime = max(0.0f, sleepTime - Core::deltaTime);
 
-                if (sleep == 0.0f && !lara->burn && lara->collide(Sphere(pos, 600.0f))) {
+                if (sleepTime == 0.0f && !lara->burn && lara->collide(Sphere(pos, 600.0f))) {
                     lara->hit(FLAME_HEAT_DAMAGE * Core::deltaTime, this);
 
                     if (lara->collide(Sphere(pos, 300.0f))) {
                         Flame::add(game, lara, 0);
-                        sleep = 3.0f; // stay inactive for 3 seconds
+                        sleepTime = 3.0f; // stay inactive for 3 seconds
                     }
                 }
             }
@@ -865,12 +865,7 @@ struct Drawbridge : Controller {
 struct Crystal : Controller {
     Texture *environment;
 
-    Crystal(IGame *game, int entity) : Controller(game, entity) {
-        uint32 opt = OPT_CUBEMAP | OPT_TARGET;
-        #ifdef USE_CUBEMAP_MIPS
-            opt |= OPT_MIPMAPS;
-        #endif
-        environment = new Texture(CRYSTAL_CUBEMAP_SIZE, CRYSTAL_CUBEMAP_SIZE, 1, FMT_RGB16, opt);
+    Crystal(IGame *game, int entity) : Controller(game, entity), environment(NULL) {
         activate();
     }
 
@@ -895,9 +890,30 @@ struct Crystal : Controller {
     }
 
     virtual void render(Frustum *frustum, MeshBuilder *mesh, Shader::Type type, bool caustics) {
-        Core::setMaterial(0.5, 0.5, 3.0, 1.0f);
-        environment->bind(sEnvironment);
+        Core::setMaterial(0.5, 0.5, 3.0, 0.0f); // 0.0f - use vertex normal as texcoord
+        GAPI::Texture *dtex = Core::active.textures[sDiffuse];
+        if (environment) {
+            environment->bind(sDiffuse);
+        } else {
+            Core::whiteCube->bind(sDiffuse);
+        }
         Controller::render(frustum, mesh, type, caustics);
+        if (dtex) dtex->bind(sDiffuse);
+    }
+
+    void bake() {
+        ASSERT(!environment);
+
+        uint32 opt = OPT_CUBEMAP | OPT_TARGET;
+        #ifdef USE_CUBEMAP_MIPS
+            opt |= OPT_MIPMAPS;
+        #endif
+
+        environment = new Texture(CRYSTAL_CUBEMAP_SIZE, CRYSTAL_CUBEMAP_SIZE, 1, FMT_RGB16, opt);
+        game->renderEnvironment(getRoomIndex(), pos - vec3(0, 512, 0), &environment);
+        if (opt & OPT_MIPMAPS) {
+            environment->generateMipMap();
+        }
     }
 };
 
