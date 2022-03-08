@@ -34,6 +34,15 @@ struct Texture : GAPI::Texture {
                     this->cluts = cluts;
                 #endif
             }
+        #elif defined(_GAPI_TA)
+            vqTex *tiles;
+
+            Texture(Tile8 *tiles, int tilesCount) : GAPI::Texture(256, 256, 1, OPT_PROXY) {
+                    this->tiles = (vqTex *)GAPI::allocVRAM(tilesCount * sizeof(vqTex));
+
+                    for (int i = 0; i < tilesCount; i++)
+                        GAPI::upload_vram((uint8*)&this->tiles[i], (uint8*)&tiles[i], width, height);
+            }
         #else
             Texture *tiles[32];
 
@@ -57,6 +66,8 @@ struct Texture : GAPI::Texture {
             bindTileIndices(tiles + tile);
         #elif defined(_GAPI_GU)
             bindTileCLUT(tiles + tile, cluts + clut);
+        #elif defined(_GAPI_TA)
+            bindTileIndices(tiles + tile);
         #else
             tiles[tile]->bind(0);
         #endif
@@ -76,7 +87,7 @@ struct Texture : GAPI::Texture {
 
     Texture(int width, int height, int depth, TexFormat format, uint32 opt = 0, void *data = NULL) : GAPI::Texture(width, height, depth, opt) {
         #ifdef SPLIT_BY_TILE
-            #if !defined(_GAPI_SW) && !defined(_GAPI_GU)
+            #if !defined(_GAPI_SW) && !defined(_GAPI_GU) && !defined(_GAPI_TA)
                 memset(this->tiles, 0, sizeof(tiles));
             #endif
         #endif
@@ -135,7 +146,7 @@ struct Texture : GAPI::Texture {
     }
 
     virtual ~Texture() {
-        #if !defined(_GAPI_SW) && !defined(_GAPI_GU)
+        #if !defined(_GAPI_SW) && !defined(_GAPI_GU) && !defined(_GAPI_TA)
             #ifdef SPLIT_BY_TILE
                 for (int i = 0; i < COUNT(tiles); i++)
                     delete tiles[i];

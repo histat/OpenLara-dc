@@ -296,7 +296,7 @@ void dc_init_hardware()
   dc_reset_target();
 
   //*(volatile unsigned int *)(0xa05f8108) = PVR_PAL_ARGB4444;
-  *(volatile unsigned int*)(0xa05f80e4) = 320 >> 5; //for stride
+  *(volatile unsigned int*)(0xa05f80e4) = 640 >> 5; //for stride
 
   pvr_set_bg_color(0.0, 0.0, 0.0);
 

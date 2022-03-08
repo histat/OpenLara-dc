@@ -6529,7 +6529,7 @@ namespace TR {
             switch (version) {
                 case VER_TR1_SAT : return ColorCLUT((uint16)texture);
                 case VER_TR1_PC  : 
-                    #ifdef _GAPI_SW
+                    #if defined(_GAPI_SW) || defined(_GAPI_TA)
                         return Color32(texture & 0xFF, 0, 0, 142);
                     #else
                         return palette[texture & 0xFF];

@@ -266,9 +266,11 @@ struct Level : IGame {
                 level.state.flags.flipped = true;
             }
 
+            #ifndef _OS_DC
             uint8 track = level.state.flags.track;
             level.state.flags.track = 0;
             playTrack(track);
+            #endif
         }
 
         statsTimeDelta = 0.0f;
@@ -576,6 +578,10 @@ struct Level : IGame {
         }
 
         #ifdef _GAPI_SW
+            GAPI::setPalette(room.flags.water ? GAPI::swPaletteWater : GAPI::swPaletteColor);
+            GAPI::setShading(true);
+        #endif
+        #ifdef _GAPI_TA
             GAPI::setPalette(room.flags.water ? GAPI::swPaletteWater : GAPI::swPaletteColor);
             GAPI::setShading(true);
         #endif
@@ -949,6 +955,10 @@ struct Level : IGame {
     #ifdef _GAPI_GU
         GAPI::freeEDRAM();
     #endif
+    #ifdef _GAPI_TA
+        GAPI::freeVRAM();
+    #endif
+
         nextLevel = TR::LVL_MAX;
         showStats = false;
 
@@ -1748,6 +1758,12 @@ struct Level : IGame {
             atlasObjects =
             atlasSprites =
             atlasGlyphs  = new Texture(level.tiles4, level.tilesCount, level.cluts, level.clutsCount);
+        #elif defined(_GAPI_TA)
+            atlasRooms   =
+            atlasObjects =
+            atlasSprites =
+            atlasGlyphs  = new Texture(level.tiles8, level.tilesCount);
+            GAPI::initPalette(level.palette, level.lightmap);
         #else
             Texture::Tile *tiles = new Texture::Tile[level.tilesCount];
             for (int i = 0; i < level.tilesCount; i++) {
@@ -1793,7 +1809,7 @@ struct Level : IGame {
             delete[] tiles;
         #endif
 
-        #ifndef _GAPI_SW
+        #if !defined(_GAPI_SW) && !defined(_GAPI_TA)
         for (int i = 0; i < level.objectTexturesCount; i++) {
             TR::TextureInfo &t = level.objectTextures[i];
 
@@ -3430,6 +3446,10 @@ struct Level : IGame {
         if (inventory->titleTimer > 1.0f || level.isTitle()) return;
 
         #ifdef _GAPI_SW
+            GAPI::setPalette(GAPI::swPaletteColor);
+            GAPI::setShading(false);
+        #endif
+        #ifdef _GAPI_TA
             GAPI::setPalette(GAPI::swPaletteColor);
             GAPI::setShading(false);
         #endif

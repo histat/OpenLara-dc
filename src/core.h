@@ -1326,7 +1326,7 @@ namespace Core {
     }
 
     void setFog(const vec4 &params) {
-    #if defined(_GAPI_D3D8) || defined(_GAPI_C3D) || defined(_GAPI_SW) || defined(FFP)
+    #if defined(_GAPI_D3D8) || defined(_GAPI_C3D) || defined(_GAPI_SW) || defined(FFP) || defined(_GAPI_TA)
         GAPI::setFog(params);
     #else
         ASSERT(Core::active.shader);
