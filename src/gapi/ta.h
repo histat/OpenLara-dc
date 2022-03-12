@@ -39,9 +39,6 @@ namespace GAPI {
     #endif
     //typedef uint16 DepthSW;
 
-    uint8   *swLightmap;
-    uint8   swLightmapNone[32 * 256];
-    uint8   swLightmapShade[32 * 256];
     ColorSW *swPalette;
     ColorSW swPaletteColor[256];
     ColorSW swPaletteWater[256];
@@ -763,7 +760,13 @@ namespace GAPI {
             uint32 u = uint32(result.u) & 0xffff;
             uint32 v = uint32(result.v) & 0xffff;
 
-            uint8 tIndex = curTile->index[(v << 8) + u];
+            uint8 tIndex;
+
+            if(curTile) {
+                tIndex = curTile->index[(v << 8) + u];
+            } else {
+                tIndex = 0;
+            }
 
             //packed_color_t argb, oargb;
             uint32 argb, oargb;
@@ -815,6 +818,12 @@ namespace GAPI {
                 } else {
                     argb = ARGB8888(vertex.light.x,vertex.light.y,vertex.light.z,vertex.light.w);
                 }
+
+                if(!curTile) {
+                    u = uint32(result.u) * 1 / 32767.0f * 255;
+                    v = uint32(result.v) * 1 / 32767.0f * 255;
+                }
+
             }
 
 
@@ -858,7 +867,6 @@ namespace GAPI {
     void DIP(Mesh *mesh, const MeshRange &range) {
         if (curTile == NULL) {
             //uint16 *tex = (uint16*)Core::active.textures[0]->memory; // TODO
-            curTile = (Tile8*)swGradient;
             //return;
         }
 
@@ -886,13 +894,6 @@ namespace GAPI {
               //swGradient[i]     = 0;
             }
         }
-
-        for (uint32 i = 0; i < 256 * 32; i++) {
-            swLightmapNone[i]  = i % 256;
-            swLightmapShade[i] = lightmap[i];
-        }
-
-        swLightmap = swLightmapShade;
         swPalette  = swPaletteColor;
 
         for (uint32 i = 0; i < 256; i++) {
@@ -908,7 +909,6 @@ namespace GAPI {
     }
 
     void setShading(bool enabled) {
-        swLightmap = enabled ? swLightmapShade : swLightmapNone;
     }
 
     vec4 copyPixel(int x, int y) {
