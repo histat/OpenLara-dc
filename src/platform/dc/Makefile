@@ -3,7 +3,7 @@ SH_ELF_BIN = /opt/toolchains/dc/sh-elf/bin
 
 DEBUG = 1
 
-OPTIMISE = -Wall -Os -fomit-frame-pointer -ffast-math
+OPTIMISE = -Wall -Os -fomit-frame-pointer -ffast-math -mfsrra -mfsca -mpretend-cmove
 #OPTIMISE += -funroll-loops -fschedule-insns2 -fdelete-null-pointer-checks 
 
 CC = $(SH_ELF_BIN)/sh-elf-gcc -ml -m4-single-only
@@ -45,7 +45,7 @@ partial:
 	make all
 
 run: $(TARGET)
-	dc-tool -x $< -i $(HOME)/Documents/dcdev/TR1-PC.ISO
+	dc-tool -x $< -i $(HOME)/Documents/dcdev/DATA.ISO
 
 dump: $(TARGET)
 	$(SH_ELF_BIN)/sh-elf-objdump -D $< > dump
@@ -68,13 +68,13 @@ IP.BIN: ip.txt
 	makeip $< $@
 
 dcdist: dist
-	cp 1ST_READ.BIN $(HOME)/Documents/dcdev/TR1-PC/
-	mkisofs -C 0,11702 -G IP.BIN -l -o TMP.ISO $(HOME)/Documents/dcdev/TR1-PC
+	cp 1ST_READ.BIN $(HOME)/Documents/dcdev/Lara/
+	mkisofs -C 0,11702 -G IP.BIN -l -o TMP.ISO $(HOME)/Documents/dcdev/Lara
 	cdi4dc TMP.ISO TEST.CDI
 
 cdi: dist
-	cp 1ST_READ.BIN cd/
-	mkisofs -C 0,11702 -G IP.BIN -l -o TMP.ISO cd
+	cp 1ST_READ.BIN GAMECD/
+	mkisofs -C 0,11702 -G IP.BIN -l -o TMP.ISO GAMECD
 	cdi4dc TMP.ISO 'OpenLara_dc_$(shell date '+%Y%m%d').CDI'
 
 rel:
@@ -82,6 +82,10 @@ rel:
 
 demul:
 	/mnt/c/opt/demul/demul.exe -run=dc -image=TEST.CDI
+
+iso:
+	mkisofs -U -D -V "OpenLara" -p "/-/ISTAT" -o $(HOME)/Documents/dcdev/DATA.ISO $(HOME)/Documents/dcdev/Lara
+
 
 banner_data:
 	echo 'static unsigned char banner_data[] = {' >> $@.tmp

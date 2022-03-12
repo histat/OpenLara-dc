@@ -571,6 +571,24 @@ static int poll_input()
   return res;
 
 }
+
+static int check_CD(const char *path) {
+	int fd;
+	DIR *dp;
+
+	fd = open(path, O_RDONLY);
+	if (fd >= 0) {
+		close(fd);
+		return 1;
+	}
+	dp = opendir(path);
+	if (dp) {
+		closedir(dp);
+		return 2;
+	}
+	return -1;
+}
+
 void LaunchMenu() {
   int i, frame;
   int w, h, type;
@@ -579,10 +597,7 @@ void LaunchMenu() {
   pvr_ptr_t banner_tex;
   pvr_ptr_t font_tex;
 
-  banner_tex = tex_load_cd("banner.bin", &w, &h, &type);
-
-  if (!banner_tex)
-    banner_tex = tex_load_ram(banner_data, &w, &h, &type);
+  banner_tex = tex_load_ram(banner_data, &w, &h, &type);
 
   pvr_poly_cxt_txr(&cxt, PVR_LIST_OP_POLY, type /*PVR_TXRFMT_RGB565|PVR_TXRFMT_VQ_ENABLE|PVR_TXRFMT_TWIDDLED*/, w, h, banner_tex, PVR_FILTER_BILINEAR);
   cxt.gen.culling = PVR_CULLING_NONE;
@@ -597,10 +612,24 @@ void LaunchMenu() {
   pvr_poly_compile(&hdr1, &cxt);
   //*((volatile unsigned int *)(void *)0xa05f8040) = 0xFFFFFF;
 
+  int checked = 0;
+  const char *path[] = {
+    "level/1/",
+    "data/",
+    NULL
+  };
+
+  for (i = 0; path[i] != NULL; i++) {
+    if(check_CD(path[i]) >= 0) {
+      checked = 1;
+      break;
+    }
+  }
+
   frame = 32;
 
   int lid = 0;
-  for (;;) {
+  while ( !checked ) {
     usleep(20000);
     if(frame > 255)
       frame = 0;
@@ -637,38 +666,12 @@ void LaunchMenu() {
     }
   }
 
-  frame = 32;
-  for(;;) {
-    usleep(20000);
-    if(frame > 255)
-      frame = 0;
-
-    int res = poll_input();
-
-    ta_begin_frame();
-    pvr_list_begin(PVR_LIST_OP_POLY);
-    draw_banner(&hdr0, w, h);
-    pvr_list_finish();
-    pvr_list_begin(PVR_LIST_TR_POLY);
-    if (frame & 32) {
-      draw_poly_strf(&hdr1, 0, 400, 1.0, 1.0, 1.0, 1.0, "PRESS START");
-    }
-    pvr_list_finish();
-    pvr_list_begin(PVR_LIST_PT_POLY);
-    pvr_list_finish();
-    ta_end_dlist();
-    frame++;
-
-    if (res == 0x008)
-      break;
-  }
-
   ta_begin_frame();
   pvr_list_begin(PVR_LIST_OP_POLY);
   draw_banner(&hdr0, w, h);
   pvr_list_finish();
   pvr_list_begin(PVR_LIST_TR_POLY);
-  draw_poly_strf(&hdr1, 0, 400, 1.0, 1.0, 1.0, 1.0, "WAIT......");
+  draw_poly_strf(&hdr1, 0, 400, 1.0, 1.0, 1.0, 1.0, "LOADING...");
   pvr_list_finish();
   pvr_list_begin(PVR_LIST_PT_POLY);
   pvr_list_finish();
