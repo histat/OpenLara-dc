@@ -113,15 +113,17 @@ void pvr_poly_compile(pvr_poly_hdr_t *dst, pvr_poly_cxt_t *src)
       pc_set_disable_texture_alpha(cxt, src->txr.alpha);
       pc_set_uv_flip(cxt, src->txr.uv_flip);
       pc_set_uv_clamp(cxt, src->txr.uv_clamp);
-      pc_set_filter(cxt, src->txr.filter);
+      int filter = src->txr.filter;
+      pc_set_anisotropic(cxt, (filter & 1));
+      pc_set_filter(cxt, (filter >> 1));
       pc_set_mipmap_bias(cxt, src->txr.mipmap_bias);
       
       if (format == 5) {
-	pc_set_palette_4bit(cxt, (src->txr.format>>21)&0x3f);
+	      pc_set_palette_4bit(cxt, (src->txr.format>>21)&0x3f);
       } else if (format == 6) {
-	pc_set_palette_8bit(cxt, (src->txr.format>>25)&0x03);
+	      pc_set_palette_8bit(cxt, (src->txr.format>>25)&0x03);
       } else {
-	pc_set_strided(cxt, (src->txr.format>>21)&0x1);
+	      pc_set_strided(cxt, (src->txr.format>>21)&0x1);
       }
     }
 }
