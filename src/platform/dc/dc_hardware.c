@@ -472,6 +472,7 @@ typedef struct
     int size;
 } tex_header_t;
 
+#if 0
 pvr_ptr_t tex_load_cd(char *filename, int *tex_w, int *tex_h, int *type)
 {
     int file = 0;
@@ -494,6 +495,7 @@ pvr_ptr_t tex_load_cd(char *filename, int *tex_w, int *tex_h, int *type)
 
     return buffer;
 }
+#endif
 
 pvr_ptr_t tex_load_ram(unsigned char *in, int *tex_w, int *tex_h, int *type)
 {
