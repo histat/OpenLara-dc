@@ -26,6 +26,8 @@
 #define SW_MAX_DIST  (20.0f * 1024.0f)
 #define SW_FOG_START (12.0f * 1024.0f)
 
+//#define ENABLE_FOG
+
 namespace GAPI {
 
     using namespace Core;
@@ -47,6 +49,9 @@ namespace GAPI {
     Tile8   *curTile;
     ColorSW swPaletteLight[256 * 2];
 
+    #ifdef ENABLE_FOG
+    float FogParams;
+    #endif
 
     uint8 ambient;
     int32 lightsCount;
@@ -379,6 +384,12 @@ namespace GAPI {
 	        m_PvrContext.txr.height = height;
 	        m_PvrContext.txr.base = (pvr_ptr_t)tile;
             m_PvrContext.txr.format = PVR_TXRFMT_ARGB1555 | PVR_TXRFMT_NONTWIDDLED | PVR_TXRFMT_VQ_ENABLE;
+
+            if (opt & OPT_NEAREST) {
+	            m_PvrContext.txr.filter = PVR_FILTER_NEAREST;
+	        } else {
+	            m_PvrContext.txr.filter = PVR_FILTER_BILINEAR;
+	        }
         }
 
         void unbind(int sampler) {}
@@ -459,6 +470,10 @@ namespace GAPI {
         pvr_poly_cxt_txr(&m_PvrContext, PVR_LIST_OP_POLY, PVR_TXRFMT_ARGB1555, 8, 8, 0, 0);
 
         m_PvrContext.gen.specular = 1;
+        m_PvrContext.gen.fog_type = PVR_FOG_VERTEX;
+        #ifdef ENABLE_FOG
+        FogParams = 0.0f;
+        #endif
     }
 
     void deinit() {
@@ -609,7 +624,23 @@ namespace GAPI {
         }
     }
 
-    void setFog(const vec4 &params) {}
+    void setFog(const vec4 &params) {
+        #ifdef ENABLE_FOG
+        FogParams = params.w;
+
+        if (params.w > 0.0f) {
+            uint32 fogColor = 0x00000000
+                | (uint32(clamp(params.z * 255.0f, 0.0f, 255.0f)) << 0)
+                | (uint32(clamp(params.y * 255.0f, 0.0f, 255.0f)) << 8)
+                | (uint32(clamp(params.x * 255.0f, 0.0f, 255.0f)) << 16);
+            PVR_SET(0x0B4, fogColor);
+
+        } else {
+            //PVR_FSET(0x0B4, PVR_PACK_COLOR(0, 0.5, 0.9, 0.9));
+            PVR_SET(0x0B4, 0);
+        }
+        #endif
+    }
 
     void applyLighting(VertexSW &result, const Vertex &vertex, float depth) {
         vec3 coord  = vec3(float(vertex.coord.x), float(vertex.coord.y), float(vertex.coord.z));
@@ -625,10 +656,12 @@ namespace GAPI {
 
         lighting += result.l;
 
+        #ifndef ENABLE_FOG
         depth -= SW_FOG_START;
         if (depth > 0.0f) {
             lighting *= clamp(1.0f - depth / (SW_MAX_DIST - SW_FOG_START), 0.0f, 1.0f);
         }
+        #endif
 
         result.l = (255 - min(255, int32(lighting)));
     }
@@ -712,7 +745,7 @@ namespace GAPI {
             vec4f_ftrv(c.x, c.y, c.z, c.w);
             #endif
 
-            #if 1
+            #if 0
             if (/*c.w < 0.0f ||*/ c.w > SW_MAX_DIST) { // skip primitive
                 if (isTriangle) {
                     i += 3 - vIndex;
@@ -768,13 +801,23 @@ namespace GAPI {
                 tIndex = 0;
             }
 
-            //packed_color_t argb, oargb;
             uint32 argb, oargb;
             packed_color_t tmp;
 
             int32 k = result.l;
-            float lv = float(255 - k);
+            float lv = float(255 - k); // lighting value in untextured colour
             oargb = 0;
+
+            #ifdef ENABLE_FOG
+            if (FogParams > 0.0f) {
+                float depth = c.w;
+
+                uint8 fog_a;
+                float alpha = clamp(depth * FogParams, 0.0f, 1.0f);
+                fog_a = alpha * 255;
+                oargb = fog_a << 24;
+            }
+            #endif
 
             if (colored) {
                 if (tIndex != 0) {
