@@ -5,19 +5,19 @@
 
 #include "game.h"
 
-
 #include <ronin/ronin.h>
 #include <ronin/soundcommon.h>
 
 #include "private.h"
 #include "vm_file.h"
 
+
 extern "C" {
   void dcExit();
   void *memcpy4s(void *s1, const void *s2, unsigned int n);
 }
 
-
+#ifdef ENABLE_LANG
 namespace DC_FLASH {
 
   int syscall_info_flash(int sect, int *info)
@@ -91,6 +91,7 @@ namespace DC_FLASH {
   }
 
 }
+#endif
 
 namespace DC_PAD 
 {
@@ -139,52 +140,23 @@ void osMutexUnlock(void *obj) {
 }
 
 // sound
+
+//int32 fps;
+int32 frameIndex = 0;
+int32 fpsCounter = 0;
+uint32 curSoundBuffer = 0;
+
 #define SND_FRAME_SIZE  4
-#define SND_FRAMES      1024
+#define SND_FRAMES      (1024)
 
-Sound::Frame     sndBuf[SND_FRAMES] __attribute__((aligned(2)));
+Sound::Frame  sndBuf[SND_FRAMES * 2] __attribute__((aligned(2)));
 
-static void write_samples(int samples, int length)
-{
-  int r = length - fillpos;
-  int n = samples;
-
-  if (fillpos+n > length) {
-    memcpy4s(RING_BUF+fillpos, &sndBuf[0], SAMPLES_TO_BYTES(r));
-    
-    fillpos = 0;
-    n -= r;
-    memcpy4s(RING_BUF, &sndBuf[r], SAMPLES_TO_BYTES(n));
-  } else {
-    memcpy4s(RING_BUF+fillpos, &sndBuf[0], SAMPLES_TO_BYTES(n));
-  }
-
-  if ((fillpos += n) >= length)
-    fillpos = 0;
-
-}
-
-static void sndUpdate()
-{
-  int ring_buffer_samples = read_sound_int(&SOUNDSTATUS->ring_length);
-  int n = read_sound_int(&SOUNDSTATUS->samplepos);
-
-  
-  if ((n-=fillpos)<0)
-    n += ring_buffer_samples;
-
-  //n = n + fillpos + (ring_buffer_samples - fillpos)
-
-  if (n < 100)
-    return;
-
-  //printf("playpos %ld ", n);
-  Sound::fill(sndBuf, SND_FRAMES);
-
-  write_samples(SND_FRAMES, ring_buffer_samples);
-}
+uint32* soundBuffer;
 
 void sndInit() {
+
+  //osLoadTrack();
+
   stop_sound();
   do_sound_command(CMD_SET_BUFFER(3));
   do_sound_command(CMD_SET_STEREO(1));
@@ -192,17 +164,53 @@ void sndInit() {
 
   memset(sndBuf, 0, SND_FRAMES * SND_FRAME_SIZE);
 
-  fillpos = 0;
+  soundBuffer = (uint32 *)sndBuf;
+}
 
- if (read_sound_int(&SOUNDSTATUS->mode) != MODE_PLAY)
+void soundFill()
+{
+  if (read_sound_int(&SOUNDSTATUS->mode) != MODE_PLAY)
     start_sound();
 
+  int ring_buffer_samples = read_sound_int(&SOUNDSTATUS->ring_length);
+  int n = read_sound_int(&SOUNDSTATUS->samplepos);
+
+  if ((n-=fillpos)<0)
+    n += ring_buffer_samples; //n = n + fillpos + (ring_buffer_samples - fillpos)
+
+  if((n < 70) && curSoundBuffer == 1)
+    return;
+
+  if (curSoundBuffer == 1) {
+    n = SND_FRAMES * 2;
+
+    if (fillpos+n > ring_buffer_samples) {
+      int r = ring_buffer_samples - fillpos;
+      memcpy4s(RING_BUF+fillpos, soundBuffer, SAMPLES_TO_BYTES(r));
+      fillpos = 0;
+      n -= r;
+      memcpy4s(RING_BUF, soundBuffer+r, SAMPLES_TO_BYTES(n));
+    } else {
+      memcpy4s(RING_BUF+fillpos, soundBuffer, SAMPLES_TO_BYTES(n));
+    }
+
+    if ((fillpos += n) >= ring_buffer_samples)
+      fillpos = 0;
+  }
+  //sndFill(soundBuffer + curSoundBuffer * SND_SAMPLES, SND_SAMPLES);
+  Sound::fill((Sound::Frame*)soundBuffer + curSoundBuffer * SND_FRAMES, SND_FRAMES);
+  curSoundBuffer ^= 1;
+}
+
+void vblank()
+{
+  frameIndex++;
+  soundFill();
 }
 
 void sndFree() {
   stop_sound();
 }
-
 
 // timing
 int osStartTime = 0;
@@ -214,7 +222,6 @@ int osGetTimeMS() {
 }
 
 //#define ENABLE_LANG
-#define SAVE_SUPPORT
 
 void osCacheWrite(Stream *stream) {
   LOG("cache stored: %s 0x%x\n", stream->name, stream->size);
@@ -238,8 +245,6 @@ void osCacheRead(Stream *stream) {
 void osReadSlot(Stream *stream) {
   LOG("read slot : %s\n", stream->name);
 
-#ifdef SAVE_SUPPORT
-
   VMFILE *f;
   f = vm_fileopen(stream->name, "rb");
   
@@ -256,19 +261,11 @@ void osReadSlot(Stream *stream) {
             stream->callback(NULL, stream->userData);
 
     delete stream;
-
-#else
-    if (stream->callback)
-      stream->callback(NULL, stream->userData);
-
-  delete stream;
-#endif
 }
 
 void osWriteSlot(Stream *stream) {
-  LOG("write slot : %s\n", stream->name);
+  LOG("write slot : %s 0x%x\n", stream->name, stream->size);
 
-#ifdef SAVE_SUPPORT
   VMFILE *f;
   f = vm_fileopen(stream->name, "wb");
   
@@ -281,14 +278,7 @@ void osWriteSlot(Stream *stream) {
         if (stream->callback)
             stream->callback(NULL, stream->userData);
 
-    delete stream;
-#else
-
-    if (stream->callback)
-      stream->callback(NULL, stream->userData);
-
   delete stream;
-#endif
 }
 
 // Input
@@ -296,16 +286,44 @@ bool osJoyReady(int index) {
   return index == 0;
 }
 
+#define X_MAX(a,b)       ((a) > (b) ? (a) : (b))
+#define CART_RUMBLE_TICKS     6
+
+int32 cartRumbleTick = 0;
+
+void rumbleInit()
+{
+}
+
+void rumbleSet(bool enable)
+{
+    if (enable) {
+        cartRumbleTick = CART_RUMBLE_TICKS;
+    } else {
+        cartRumbleTick = 0;
+    }
+}
+
+void rumbleUpdate(int32 frames)
+{
+    if (!cartRumbleTick)
+        return;
+
+    cartRumbleTick -= frames;
+
+    if (cartRumbleTick <= 0) {
+        rumbleSet(false);
+    }
+}
+
 void osJoyVibrate(int index, float L, float R) {
-    // TODO
+    rumbleSet(X_MAX(L, R) > 0);
 }
 
 void joyInit() {
 }
 
 void joyUpdate() {
-
-  struct timeval tm;
 
   static unsigned int tick = 0;
   unsigned int t = Timer();
@@ -321,20 +339,20 @@ void joyUpdate() {
   int mask = getimask();
   setimask(15);
 
-  sndUpdate();
+  vblank();
 
   int JoyCnt = 0;
 
   struct mapledev *pad = locked_get_pads();
-  for(int i = 0; i < 4; i++, pad++) {
-    if( pad->func & MAPLE_FUNC_CONTROLLER && JoyCnt < 2) {
+  for (int i = 0; i < 4; i++, pad++) {
+    if ( pad->func & MAPLE_FUNC_CONTROLLER && JoyCnt < 2) {
       int Buttons = ~pad->cond.controller.buttons & 0x0fff;
       Buttons |= ((pad->cond.controller.ltrigger > 30) ? DC_PAD::JOY_LTRIGGER:0);
       Buttons |= ((pad->cond.controller.rtrigger > 30) ? DC_PAD::JOY_RTRIGGER:0);
       int joyx = pad->cond.controller.joyx;
       int joyy = pad->cond.controller.joyy;
       
-      if(Buttons == 0x0606)
+      if (Buttons == 0x0606)
 	      Core::quit();
       
       Input::setJoyDown(JoyCnt, jkUp, Buttons & DC_PAD::JOY_DPAD_UP);
@@ -416,8 +434,19 @@ int main()
     //Game::init("DEMODATA/LEVEL2.DEM");
     //Game::init("PSXDATA/CUT1.PSX");
 
+    int32 lastFrameIndex = -1;
+
     while (!Core::isQuit) {
       joyUpdate();
+
+      int32 frame = frameIndex / 2;
+      int32 delta = frame - lastFrameIndex;
+
+      lastFrameIndex = frame;
+
+      if (delta != 0)
+        rumbleUpdate(delta);
+
 
       if (Game::update()) {
 	        ta_begin_frame();
@@ -425,6 +454,16 @@ int main()
 	        Game::render();
 	        primitive_buffer_flush();
 	        ta_end_dlist();
+      }
+
+      fpsCounter++;
+      if (frameIndex >= 60)
+      {
+          frameIndex -= 60;
+          lastFrameIndex -= 30;
+          //fps = fpsCounter;
+
+          fpsCounter = 0;
       }
     }
 

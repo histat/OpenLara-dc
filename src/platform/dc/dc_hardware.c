@@ -242,6 +242,68 @@ int gettimeofday (struct timeval *tv, void *tz)
   return 0;
 }
 
+struct rumbinfo {
+  int port;
+  int dev;
+  unsigned long func;
+};
+
+static unsigned int read_belong(unsigned int *l)
+{
+  unsigned int v = *l;
+  return sh4ByteSwap(v);
+}
+
+static void write_belong(unsigned int *l, unsigned int v)
+{
+  *l = sh4ByteSwap(v);
+}
+
+int rumble_check_unit(int unit, struct rumbinfo *info)
+{
+  unsigned int func;
+  unsigned char *res;
+
+  info->port = unit/6;
+  info->dev = unit - info->port*6;
+
+  if(info->port<0 || info->port>3 || info->dev<0 || info->dev>5)
+    return 0;
+
+  //FIXME: Timer problem if docmd was done somewhere else within 15000s?
+  res = maple_docmd(info->port, info->dev, MAPLE_COMMAND_DEVINFO, 0, NULL);
+
+  if(res && res[0] == MAPLE_RESPONSE_DEVINFO && res[3]>=28 &&
+     ((func=read_belong((unsigned int *)(res+4)))&MAPLE_FUNC_PURUPURU)) {
+    info->func = func;
+  }
+
+  return 0;
+}
+
+int rumble_set(struct rumbinfo *info, int on)
+{
+  unsigned int param[2];
+  unsigned char *res;
+  int retr;
+
+  if(!(info->func & MAPLE_FUNC_PURUPURU))
+    return 0;
+
+  for(retr = 0; retr < 5; retr++) {
+
+    write_belong(&param[0], MAPLE_FUNC_PURUPURU);
+    write_belong(&param[1], (on? 0x011a7010 : 0));
+
+    if((res = maple_docmd(info->port, info->dev, MAPLE_COMMAND_SETCOND, 2,
+                          param))
+       && res[0] == MAPLE_RESPONSE_OK)
+      return 1;
+  }
+
+  return 0;
+}
+
 #define TA_LIST_ENABLE_DEFAULT (TA_LIST_OPAQUEPOLY|TA_LIST_TRANSPOLY|TA_LIST_PUNCHTHROUGH)
 //#define TA_LIST_ENABLE_DEFAULT (TA_LIST_OPAQUEPOLY|TA_LIST_OPAQUEMOD|TA_LIST_TRANSPOLY)
 //#define TA_LIST_ENABLE_DEFAULT (TA_LIST_OPAQUEPOLY|TA_LIST_TRANSPOLY)
@@ -310,6 +372,7 @@ void dc_init_hardware()
   primitive_buffer_init(0, 0, -1);
   //primitive_buffer_init(1, &prim_buffer[256 * 1024 * 0], 256 * 1024);
   primitive_buffer_init(2, &prim_buffer[256 * 1024 * 0], 256 * 1024 * 1);
+  //primitive_buffer_init(2, &prim_buffer[256 * 1024 * 0], 256 * 1024 * 4);
   //primitive_buffer_init(3, &prim_buffer[256 * 1024 * 2], 256 * 1024);
   primitive_buffer_init(4, &prim_buffer[256 * 1024 * 2], 256 * 1024 * 3);
 
