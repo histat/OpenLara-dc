@@ -1,5 +1,5 @@
-#ifndef _VMFILE_H_
-#define _VMFILE_H_
+#ifndef VMFILE_H
+#define VMFILE_H
 
 struct VMFILE
 {

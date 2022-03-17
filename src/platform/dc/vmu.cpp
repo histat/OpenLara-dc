@@ -1,5 +1,4 @@
 #include <stdio.h>
-#include <stdint.h>
 #include <string.h>
 #include <time.h>
 #include <zlib.h>
@@ -22,7 +21,6 @@ static void setlcd(struct vmsinfo *info, void *bit)
   maple_docmd(info->port, info->dev, MAPLE_COMMAND_BWRITE, 50, param);
 }
 
-/*
 static void clearlcd(struct vmsinfo *info)
 {
   unsigned int bit[50];
@@ -30,7 +28,6 @@ static void clearlcd(struct vmsinfo *info)
   memset(bit, 0, sizeof(bit));
   setlcd(info, bit);
 }
-*/
 
 static void conv_lcd_icon(unsigned char *bit, const unsigned char *in)
 {
@@ -45,9 +42,9 @@ static void conv_lcd_icon(unsigned char *bit, const unsigned char *in)
     *--dst = 0xff;
     for (j= 0; j<4; j++) {
       for (x=0; x<8; x++) {
-	v <<= 1;
-	v |= (b & 1)?1:0;
-	b >>= 1;
+	      v <<= 1;
+	      v |= (b & 1)?1:0;
+	      b >>= 1;
       }
       *--dst = v;
     }
@@ -71,17 +68,15 @@ static void conv_icon(unsigned char *bit, const unsigned char *in)
     for (j= 0; j<4; j++) {
       b = *src++;
       for (x=0; x<4; x++) {
-	v = (b & 0x80)?0x00:0xf0;
-	v |= (b & 0x40)?0x00:0x0f;
-	b <<= 2;
-	dst[x] = v;
+	      v = (b & 0x80)?0x00:0xf0;
+	      v |= (b & 0x40)?0x00:0x0f;
+	      b <<= 2;
+	      dst[x] = v;
       }
       dst += 4;
     }
   }
 }
-
-#define MAX_VMU_SIZE (128 * 1024)
 
 int vm_file;
 static bool vmu_avail[4*2];
@@ -101,10 +96,10 @@ bool vmfile_search(const char *fname, int *vm)
     struct mapledev *pad=locked_get_pads();
     for (int i=0; i<4; ++i, ++pad) {
       if (pad[i].present & (1<<0)) {
-	vmu_avail[i] = true;
+	      vmu_avail[i] = true;
       }
       if (pad[i].present & (1<<1)) {
-	vmu_avail[i+4] = true;
+	      vmu_avail[i+4] = true;
       }
     }
     setimask(mask);
@@ -148,18 +143,16 @@ bool save_to_vmu(int unit, const char *filename, const char *buf, int buf_len)
   struct superblock super;
   struct vms_file file;
   char new_filename[16];
-  int free_cnt;
+  unsigned int free_cnt;
   time_t long_time;
   struct tm *now_time;
   struct timestamp stamp;
-  unsigned char compressed_buf[MAX_VMU_SIZE];
-  int compressed_len;
+  unsigned char *compressed_buf;
+  uLongf compressed_len;
 
-  memset(compressed_buf, 0, sizeof(compressed_buf));
-  compressed_len = buf_len + 512;
+  compressed_buf = (unsigned char*)malloc(buf_len);
   
-  if (compress((Bytef*)compressed_buf, (uLongf*)&compressed_len,
-	       (Bytef*)buf, buf_len) != Z_OK) {
+  if (compress((Bytef*)compressed_buf, &compressed_len, (Bytef*)buf, buf_len) != Z_OK) {
     return false;
   }
   if (!vmsfs_check_unit(unit, 0, &info)) {
@@ -204,10 +197,12 @@ bool save_to_vmu(int unit, const char *filename, const char *buf, int buf_len)
     fprintf(stderr,"%s",vmsfs_describe_error());
 #endif
     vmsfs_beep(&info, 0);
+    free(compressed_buf);
+    clearlcd(&info);
     return false;
   }
-
   vmsfs_beep(&info, 0);
+  free(compressed_buf);
   setlcd(&info, lcd_icon);
   
   return true;
@@ -218,8 +213,8 @@ bool load_from_vmu(int unit, const char *filename, char *buf, int *buf_len)
   struct vmsinfo info;
   struct superblock super;
   struct vms_file file;
-  unsigned char compressed_buf[MAX_VMU_SIZE];
-  unsigned int compressed_len;
+  unsigned char *compressed_buf;
+  int compressed_len;
   
   if (!vmsfs_check_unit(unit, 0, &info)) {
     return false;
@@ -231,19 +226,23 @@ bool load_from_vmu(int unit, const char *filename, char *buf, int *buf_len)
     return false;
   }
   
-  memset(compressed_buf, 0, sizeof(compressed_buf));
   compressed_len = file.size;
+  compressed_buf = (unsigned char*)malloc(compressed_len);
   
   if (!vmsfs_read_file(&file, (Bytef*)compressed_buf, compressed_len)) {
     return false;
   }
+
+  uLongf len = *buf_len;
   
-  if (!*buf_len)
-    *buf_len = MAX_VMU_SIZE;
-  
-  if (uncompress((Bytef*)buf, (uLongf*)buf_len,(const Bytef*)compressed_buf, (uLong)compressed_len) != Z_OK) {
+  if (uncompress((Bytef*)buf, &len,(const Bytef*)compressed_buf, (uLong)compressed_len) != Z_OK) {
+    free(compressed_buf);
+    clearlcd(&info);
     return false;
   }
+  free(compressed_buf);
+
+  *buf_len = len;
 
   setlcd(&info, lcd_icon);
 

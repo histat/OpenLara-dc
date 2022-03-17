@@ -41,13 +41,12 @@ VMFILE *vm_fileopen(const char *fname, const char *mode)
   char *_buffer = fh[i]._buffer;
   
   if (!strncmp(mode, "rb", 2)) {
-    
     if (!vmfile_search(fname, &vm)) {
-#ifndef NOSERIAL
-      printf("Can't open %s", fname);
-#endif
       goto _exit;
     }
+
+    size = MAX_SIZE;
+
     if (!load_from_vmu(vm, fname, _buffer, &size)) {
 #ifndef NOSERIAL
       printf("load failed rb %s", fname);
@@ -70,22 +69,6 @@ VMFILE *vm_fileopen(const char *fname, const char *mode)
 
     fh[i].flag = O_WRITE;
 
-  } else if (!strncmp(mode, "r+", 2)) {
-
-    if (!vmfile_search(fname, &vm)) {
-#ifndef NOSERIAL
-      printf("Can't open %s", fname);
-#endif
-      goto _exit;
-    }
-    
-    if (!load_from_vmu(vm, fname, _buffer, &size)) {
-      goto _exit;
-    }
-    
-    fh[i].flag = O_READ;
-    cnt = size;
-    
   } else {
 #ifndef NOSERIAL
     fprintf(stderr,"ERROR: VMU");

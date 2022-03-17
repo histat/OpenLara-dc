@@ -1,5 +1,5 @@
-#ifndef _PRIVATE_H_INCLUDED_
-#define _PRIVATE_H_INCLUDED_
+#ifndef PRIVATE_H_INCLUDED
+#define PRIVATE_H_INCLUDED
 
 #include <stdint.h>
 #include <stddef.h>

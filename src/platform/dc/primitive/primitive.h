@@ -1,11 +1,7 @@
-#ifndef _PRIM_H_INCLUDED_
-#define _PRIM_H_INCLUDED_
+#ifndef PRIM_H_INCLUDED
+#define PRIM_H_INCLUDED
 
-#ifdef BUILD_LIB
-#include <kos.h>
-#else
 #include "private.h"
-#endif
 
 typedef union {
     unsigned int color;
