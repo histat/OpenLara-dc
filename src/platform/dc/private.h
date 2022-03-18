@@ -524,6 +524,15 @@ int pvr_list_finish();
 
   //#define USE_AA
 
+struct rumbinfo {
+  int port;
+  int dev;
+  unsigned long func;
+};
+
+int rumble_check_unit(int unit, struct rumbinfo *info);
+int rumble_set(struct rumbinfo *info, int on);
+
 void dc_init_hardware();
 
 #if defined(__cplusplus) || defined(c_plusplus)

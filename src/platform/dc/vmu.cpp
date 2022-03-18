@@ -3,13 +3,7 @@
 #include <time.h>
 #include <zlib.h>
 #include "vmu.h"
-#include "vm_file.h"
 #include <ronin/ronin.h>
-
-#include "icon_data_2bpp.h"
-
-static unsigned char lara_icon[32+512];
-static unsigned char lcd_icon[(48/8)*32];
 
 static void setlcd(struct vmsinfo *info, void *bit)
 {
@@ -29,7 +23,7 @@ static void clearlcd(struct vmsinfo *info)
   setlcd(info, bit);
 }
 
-static void conv_lcd_icon(unsigned char *bit, const unsigned char *in)
+void conv_lcd_icon(unsigned char *bit, const unsigned char *in)
 {
   int i,x,j;
   unsigned int *src = (unsigned int *)in;
@@ -52,7 +46,7 @@ static void conv_lcd_icon(unsigned char *bit, const unsigned char *in)
   }
 }
 
-static void conv_icon(unsigned char *bit, const unsigned char *in)
+void conv_icon(unsigned char *bit, const unsigned char *in)
 {
   int i,x,j;
   const unsigned char *src = in;
@@ -78,65 +72,7 @@ static void conv_icon(unsigned char *bit, const unsigned char *in)
   }
 }
 
-int vm_file;
-static bool vmu_avail[4*2];
-
-bool vmfile_search(const char *fname, int *vm)
-{
-  struct vmsinfo info;
-  struct superblock super;
-  struct vms_file file;
-  static bool inited = false;
-  
-  if(!inited) {
-    memset(vmu_avail, false, sizeof(vmu_avail));
-    
-    int mask = getimask();
-    setimask(15);
-    struct mapledev *pad=locked_get_pads();
-    for (int i=0; i<4; ++i, ++pad) {
-      if (pad[i].present & (1<<0)) {
-	      vmu_avail[i] = true;
-      }
-      if (pad[i].present & (1<<1)) {
-	      vmu_avail[i+4] = true;
-      }
-    }
-    setimask(mask);
-  
-    conv_lcd_icon(lcd_icon, icon_data_2bpp);  
-
-    conv_icon(lara_icon, icon_data_2bpp);
-
-    inited = true;
-  }
-
-  for (int x=0; x<4; x++) {
-    for (int y=0; y<2; y++) {
-      
-      if (vmu_avail[x+y*4]) {
-	int res = x*6 + y + 1;
-	if (vmsfs_check_unit(res, 0, &info))
-	  if (vmsfs_get_superblock(&info, &super))
-	    if (vmsfs_open_file(&super, fname, &file)) {
-#ifndef NOSERIAL
-	      printf("%s Found on %c%d\n", fname, 'A'+res/6,res%6);	
-#endif	
-	      *vm = res;
-	      return true;
-	    }
-      }
-    }
-  }
-  return false;
-}
-
-bool vmfile_exists(const char *fname)
-{
-    return vmfile_search(fname, &vm_file);
-}
-
-bool save_to_vmu(int unit, const char *filename, const char *buf, int buf_len)
+bool save_to_vmu(int unit, const char *filename, const char *buf, int buf_len, unsigned char *icon, unsigned char *lcd)
 {
   struct vms_file_header header;
   struct vmsinfo info;
@@ -172,11 +108,11 @@ bool save_to_vmu(int unit, const char *filename, const char *buf, int buf_len)
   }
   
   memset(&header, 0, sizeof(header));
-  strncpy(header.shortdesc, "OpenLara",sizeof(header.shortdesc));
-  strncpy(header.longdesc, "OpenLara/SAVE", sizeof(header.longdesc));
+  strncpy(header.shortdesc, "Save Data",sizeof(header.shortdesc));
+  strncpy(header.longdesc, "OpenLara", sizeof(header.longdesc));
   strncpy(header.id, "OpenLara", sizeof(header.id));
   header.numicons = 1;
-  memcpy(header.palette, lara_icon, sizeof(header.palette));
+  memcpy(header.palette, icon, sizeof(header.palette));
 
   time(&long_time);
   now_time = localtime(&long_time);
@@ -190,25 +126,26 @@ bool save_to_vmu(int unit, const char *filename, const char *buf, int buf_len)
     stamp.second = now_time->tm_sec;
   }
 
+  clearlcd(&info);
   vmsfs_beep(&info, 1);
 
-  if (!vmsfs_create_file(&super, new_filename, &header, lara_icon+sizeof(header.palette), NULL, compressed_buf, compressed_len, &stamp)) {
+  if (!vmsfs_create_file(&super, new_filename, &header, icon+sizeof(header.palette), NULL, compressed_buf, compressed_len, &stamp)) {
 #ifndef NOSERIAL
     fprintf(stderr,"%s",vmsfs_describe_error());
 #endif
     vmsfs_beep(&info, 0);
     free(compressed_buf);
-    clearlcd(&info);
     return false;
   }
   vmsfs_beep(&info, 0);
   free(compressed_buf);
-  setlcd(&info, lcd_icon);
+
+  setlcd(&info, lcd);
   
   return true;
 }
 
-bool load_from_vmu(int unit, const char *filename, char *buf, int *buf_len)
+bool load_from_vmu(int unit, const char *filename, char *buf, int *buf_len, unsigned char *lcd)
 {
   struct vmsinfo info;
   struct superblock super;
@@ -244,7 +181,7 @@ bool load_from_vmu(int unit, const char *filename, char *buf, int *buf_len)
 
   *buf_len = len;
 
-  setlcd(&info, lcd_icon);
+  setlcd(&info, lcd);
 
   return true;
 }

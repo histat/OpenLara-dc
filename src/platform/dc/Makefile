@@ -1,10 +1,9 @@
 ronindir = $(HOME)/repo/libronin
 SH_ELF_BIN = /opt/toolchains/dc/sh-elf/bin
 
-DEBUG = 1
+DEBUG = 0
 
 OPTIMISE = -Wall -Os -fomit-frame-pointer -ffast-math -mfsrra -mfsca -mpretend-cmove
-#OPTIMISE += -funroll-loops -fschedule-insns2 -fdelete-null-pointer-checks 
 
 CC = $(SH_ELF_BIN)/sh-elf-gcc -ml -m4-single-only
 CXX = $(SH_ELF_BIN)/sh-elf-g++ -ml -m4-single-only -std=gnu++11
@@ -13,7 +12,7 @@ AS = $(SH_ELF_BIN)/sh-elf-as -little
 INCLUDES = $(ronindir)/include ../.. ../dc
 
 CFLAGS = $(OPTIMISE) -D__DC__ $(addprefix -I,$(INCLUDES)) -Wno-format -Wno-unused-variable -Wno-unused-but-set-variable -Wno-unused-value -Wno-sign-compare
-CXXFLAGS = $(CFLAGS) -fno-exceptions -fno-rtti
+CXXFLAGS = $(CFLAGS) -fno-exceptions -fno-rtti -fno-use-cxa-atexit
 LDFLAGS = -Wl,-Tshlelf.xc -nostartfiles $(ronindir)/lib/crt0.o
 LIBS = -L$(ronindir)/lib -lronin -lz -lm -lstdc++
 
@@ -29,7 +28,7 @@ endif
 OBJS = main.o
 #OBJS += ../../libs/stb_vorbis/stb_vorbis.o
 OBJS += ../../libs/tinf/tinflate.o 
-OBJS += dc_hardware.o libpspvram/valloc.o vm_file.o vmu.o
+OBJS += dc_hardware.o libpspvram/valloc.o vmu.o
 OBJS += primitive/polygon.o primitive/modifier.o primitive/prim_buffer.o
 
 all: $(TARGET)

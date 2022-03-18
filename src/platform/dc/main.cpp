@@ -9,8 +9,8 @@
 #include <ronin/soundcommon.h>
 
 #include "private.h"
-#include "vm_file.h"
-
+#include "vmu.h"
+#include "icon_data_2bpp.h"
 
 extern "C" {
   void dcExit();
@@ -147,15 +147,14 @@ int32 fpsCounter = 0;
 uint32 curSoundBuffer = 0;
 
 #define SND_FRAME_SIZE  4
-#define SND_FRAMES      (1024)
+//#define SND_FRAMES      1152
+#define SND_FRAMES      1024
 
-Sound::Frame  sndBuf[SND_FRAMES * 2] __attribute__((aligned(2)));
+Sound::Frame  sndBuf[SND_FRAMES * 2 + 32] __attribute__((aligned(2)));
 
 uint32* soundBuffer;
 
 void sndInit() {
-
-  //osLoadTrack();
 
   stop_sound();
   do_sound_command(CMD_SET_BUFFER(3));
@@ -178,27 +177,33 @@ void soundFill()
   if ((n-=fillpos)<0)
     n += ring_buffer_samples; //n = n + fillpos + (ring_buffer_samples - fillpos)
 
-  if((n < 70) && curSoundBuffer == 1)
+  if(n < 22)
     return;
 
   if (curSoundBuffer == 1) {
-    n = SND_FRAMES * 2;
-
-    if (fillpos+n > ring_buffer_samples) {
-      int r = ring_buffer_samples - fillpos;
-      memcpy4s(RING_BUF+fillpos, soundBuffer, SAMPLES_TO_BYTES(r));
-      fillpos = 0;
-      n -= r;
-      memcpy4s(RING_BUF, soundBuffer+r, SAMPLES_TO_BYTES(n));
-    } else {
-      memcpy4s(RING_BUF+fillpos, soundBuffer, SAMPLES_TO_BYTES(n));
-    }
-
-    if ((fillpos += n) >= ring_buffer_samples)
-      fillpos = 0;
   }
   //sndFill(soundBuffer + curSoundBuffer * SND_SAMPLES, SND_SAMPLES);
   Sound::fill((Sound::Frame*)soundBuffer + curSoundBuffer * SND_FRAMES, SND_FRAMES);
+  #if 1
+  uint32 *srcBuffer = soundBuffer + curSoundBuffer * SND_FRAMES;
+
+  n = SND_FRAMES;
+
+  if (fillpos+n > ring_buffer_samples) {
+    int r = ring_buffer_samples - fillpos;
+    memcpy4s(RING_BUF+fillpos, srcBuffer, SAMPLES_TO_BYTES(r));
+    fillpos = 0;
+    n -= r;
+    memcpy4s(RING_BUF, srcBuffer+r, SAMPLES_TO_BYTES(n));
+  } else {
+    memcpy4s(RING_BUF+fillpos, srcBuffer, SAMPLES_TO_BYTES(n));
+  }
+
+ if ((fillpos += n) >= ring_buffer_samples)
+    fillpos = 0;
+
+#endif
+
   curSoundBuffer ^= 1;
 }
 
@@ -223,60 +228,73 @@ int osGetTimeMS() {
 
 //#define ENABLE_LANG
 
-void osCacheWrite(Stream *stream) {
-  LOG("cache stored: %s 0x%x\n", stream->name, stream->size);
-  
-  if (stream->callback)
-    stream->callback(NULL, stream->userData);
-
-  delete stream;
-}
-
-void osCacheRead(Stream *stream) {
-  LOG("cache loaded: %s 0x%x\n", stream->name, stream->size);
-
-  if (stream->callback)
-    stream->callback(NULL, stream->userData);
-
-  delete stream;
-}
-
 // memory card
+
+#define MAX_VMU_SIZE 128*1024
+
+unsigned char lara_icon[32+512];
+unsigned char lcd_icon[(48/8)*32];
+
+static int last_vm = -1;
+
 void osReadSlot(Stream *stream) {
   LOG("read slot : %s\n", stream->name);
-
-  VMFILE *f;
-  f = vm_fileopen(stream->name, "rb");
   
-  if (f) {
-    int size = (int)vm_fsize(f);
-    char *data = new char[size];
-    vm_fread(data, 1, size, f);
-    vm_fclose(f);
+  int size = MAX_VMU_SIZE;
+  char *data = new char[size];
+  if(last_vm >= 0 && load_from_vmu(last_vm, stream->name, data, &size, lcd_icon)) {
     if (stream->callback)
       stream->callback(new Stream(stream->name, data, size), stream->userData);
-    delete[] data;
-    } else
-        if (stream->callback)
-            stream->callback(NULL, stream->userData);
 
+    delete[] data;
+    delete stream;
+    return;
+  }
+
+  last_vm = -1;
+
+  for (int i=0; i<24; i++)
+     if(load_from_vmu(i, stream->name, data, &size, lcd_icon)) {
+      last_vm = i;
+      break;
+  }
+
+  if (last_vm >= 0) {
+    if (stream->callback)
+      stream->callback(new Stream(stream->name, data, size), stream->userData);
+  } else
+      if (stream->callback)
+          stream->callback(NULL, stream->userData);
+
+    delete[] data;
     delete stream;
 }
 
 void osWriteSlot(Stream *stream) {
   LOG("write slot : %s 0x%x\n", stream->name, stream->size);
 
-  VMFILE *f;
-  f = vm_fileopen(stream->name, "wb");
-  
-  if (f) {
-    vm_fwrite(stream->data, 1, stream->size, f);
-    vm_fclose(f);
-    if (stream->callback)
+  if (last_vm >= 0 && save_to_vmu(last_vm, stream->name, stream->data, stream->size, lara_icon, lcd_icon)) {
+     if (stream->callback)
       stream->callback(new Stream(stream->name, stream->data, stream->size), stream->userData);
-    } else
-        if (stream->callback)
-            stream->callback(NULL, stream->userData);
+
+    delete stream;
+    return;
+  }
+
+  last_vm = -1;
+
+  for (int i=0; i<24; i++)
+    if (save_to_vmu(i, stream->name, stream->data, stream->size, lara_icon, lcd_icon)) {
+      last_vm = i;
+      break;
+    }
+
+  if (last_vm >= 0) {
+     if (stream->callback)
+      stream->callback(new Stream(stream->name, stream->data, stream->size), stream->userData);
+  } else
+      if (stream->callback)
+        stream->callback(NULL, stream->userData);
 
   delete stream;
 }
@@ -291,8 +309,10 @@ bool osJoyReady(int index) {
 
 int32 cartRumbleTick = 0;
 
+struct rumbinfo rumblepack;
 void rumbleInit()
 {
+  rumble_check_unit(0, &rumblepack);
 }
 
 void rumbleSet(bool enable)
@@ -302,6 +322,11 @@ void rumbleSet(bool enable)
     } else {
         cartRumbleTick = 0;
     }
+
+    if(cartRumbleTick)
+      rumble_set(&rumblepack, 1);
+    else
+      rumble_set(&rumblepack, 0);
 }
 
 void rumbleUpdate(int32 frames)
@@ -388,6 +413,7 @@ void joyUpdate() {
   setimask(mask);
 }
 
+#ifdef ENABLE_LANG
 int checkLanguage(int arg) {
   uint16 id;
   int str = STR_LANG_EN;
@@ -405,6 +431,7 @@ int checkLanguage(int arg) {
   }
   return str - STR_LANG_EN;
 }
+#endif
 
 int main()
 {
@@ -415,8 +442,12 @@ int main()
     //printf("start time %d\n", osStartTime);
     cacheDir[0] = saveDir[0] = contentDir[0] = 0;
 
+    conv_icon(lara_icon, icon_data_2bpp);
+    conv_lcd_icon(lcd_icon, icon_data_2bpp);
+
     sndInit();
     joyInit();
+    rumbleInit();
 
 #ifdef ENABLE_LANG
     int id = DC_FLASH::GetLocalLanguage();

@@ -10,7 +10,6 @@
 #include "npvr_vertex.h"
 #include <ronin/ronin.h>
 #include <ronin/gddrive.h>
-
 #include "banner_data.h"
 
 extern void LaunchMenu();
@@ -242,11 +241,6 @@ int gettimeofday (struct timeval *tv, void *tz)
   return 0;
 }
 
-struct rumbinfo {
-  int port;
-  int dev;
-  unsigned long func;
-};
 
 static unsigned int read_belong(unsigned int *l)
 {
@@ -375,6 +369,7 @@ void dc_init_hardware()
   //primitive_buffer_init(2, &prim_buffer[256 * 1024 * 0], 256 * 1024 * 4);
   //primitive_buffer_init(3, &prim_buffer[256 * 1024 * 2], 256 * 1024);
   primitive_buffer_init(4, &prim_buffer[256 * 1024 * 2], 256 * 1024 * 3);
+
 
   LaunchMenu();
 

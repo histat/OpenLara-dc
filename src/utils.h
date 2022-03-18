@@ -2077,7 +2077,13 @@ public:
                 return;
             }
         #endif
+        #ifdef _OS_DC
+        if (stream->callback)
+            stream->callback(NULL, stream->userData);
+        delete stream;
+        #else
         osCacheRead(stream);
+        #endif
     }
 
     static void cacheWrite(const char *name, const char *data, int size, Callback *callback = NULL, void *userData = NULL) {
@@ -2088,7 +2094,13 @@ public:
                 return;
             }
         #endif
+        #ifdef _OS_DC
+        if (stream->callback)
+            stream->callback(NULL, stream->userData);
+        delete stream;
+        #else
         osCacheWrite(stream);
+        #endif
     }
 
     static void fixBackslash(char *str) {

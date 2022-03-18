@@ -5,13 +5,11 @@
 extern "C" {
 #endif
 
-bool vmfile_search(const char *fname, int *vm);
-void vm_avail();
-bool save_to_vmu(int unit, const char *filename, const char *buf, int buf_len);
-bool load_from_vmu(int unit, const char *filename, char *buf, int *buf_len);
+void conv_lcd_icon(unsigned char *bit, const unsigned char *in);
+void conv_icon(unsigned char *bit, const unsigned char *in);
 
-  //int save_to_vmu(int unit, const char *filename, const char *desc_long, const char *desc_short, void *buf, int buf_len, unsigned char *icon_data);
-  //int load_from_vmu(int unit, const char *filename, void *buf, int *buf_len);
+bool save_to_vmu(int unit, const char *filename, const char *buf, int buf_len, unsigned char *icon, unsigned char *lcd);
+bool load_from_vmu(int unit, const char *filename, char *buf, int *buf_len, unsigned char *lcd);
 
 #ifdef __cplusplus
 }
