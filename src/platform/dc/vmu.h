@@ -5,6 +5,16 @@
 extern "C" {
 #endif
 
+enum vmuresult {
+    VMU_OK,
+    VMU_NO,
+    VMU_NORES,
+    VMU_NOSPACE,
+    VMU_NOFILE,
+    VMU_READFAILE,
+    VMU_WRITEFAILE
+};
+
 void conv_lcd_icon(unsigned char *bit, const unsigned char *in);
 void conv_icon(unsigned char *bit, const unsigned char *in);
 

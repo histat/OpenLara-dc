@@ -2078,9 +2078,7 @@ public:
             }
         #endif
         #ifdef _OS_DC
-        if (stream->callback)
-            stream->callback(NULL, stream->userData);
-        delete stream;
+        osCacheRead(stream);
         #else
         osCacheRead(stream);
         #endif
@@ -2095,9 +2093,7 @@ public:
             }
         #endif
         #ifdef _OS_DC
-        if (stream->callback)
-            stream->callback(NULL, stream->userData);
-        delete stream;
+        osCacheWrite(stream);
         #else
         osCacheWrite(stream);
         #endif

@@ -1,9 +1,10 @@
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
-#include <zlib.h>
 #include "vmu.h"
 #include <ronin/ronin.h>
+
+vmuresult vmu_errno;
 
 static void setlcd(struct vmsinfo *info, void *bit)
 {
@@ -83,18 +84,14 @@ bool save_to_vmu(int unit, const char *filename, const char *buf, int buf_len, u
   time_t long_time;
   struct tm *now_time;
   struct timestamp stamp;
-  unsigned char *compressed_buf;
-  uLongf compressed_len;
+  int size = buf_len;
 
-  compressed_buf = (unsigned char*)malloc(buf_len);
-  
-  if (compress((Bytef*)compressed_buf, &compressed_len, (Bytef*)buf, buf_len) != Z_OK) {
-    return false;
-  }
   if (!vmsfs_check_unit(unit, 0, &info)) {
+    vmu_errno = VMU_NO;
     return false;
   }
   if (!vmsfs_get_superblock(&info, &super)) {
+    vmu_errno = VMU_NORES;
     return false;
   }
   free_cnt = vmsfs_count_free(&super);
@@ -103,7 +100,8 @@ bool save_to_vmu(int unit, const char *filename, const char *buf, int buf_len, u
   if (vmsfs_open_file(&super, new_filename, &file))
     free_cnt += file.blks;
   
-  if (((128+512+compressed_len+511)/512) > free_cnt) {
+  if (((128+512+size+511)/512) > free_cnt) {
+    vmu_errno = VMU_NOSPACE;
     return false;
   }
   
@@ -129,18 +127,19 @@ bool save_to_vmu(int unit, const char *filename, const char *buf, int buf_len, u
   clearlcd(&info);
   vmsfs_beep(&info, 1);
 
-  if (!vmsfs_create_file(&super, new_filename, &header, icon+sizeof(header.palette), NULL, compressed_buf, compressed_len, &stamp)) {
+  if (!vmsfs_create_file(&super, new_filename, &header, icon+sizeof(header.palette), NULL, buf, size, &stamp)) {
 #ifndef NOSERIAL
     fprintf(stderr,"%s",vmsfs_describe_error());
 #endif
     vmsfs_beep(&info, 0);
-    free(compressed_buf);
+    vmu_errno = VMU_WRITEFAILE;
     return false;
   }
   vmsfs_beep(&info, 0);
-  free(compressed_buf);
 
   setlcd(&info, lcd);
+
+  vmu_errno = VMU_OK;
   
   return true;
 }
@@ -150,38 +149,34 @@ bool load_from_vmu(int unit, const char *filename, char *buf, int *buf_len, unsi
   struct vmsinfo info;
   struct superblock super;
   struct vms_file file;
-  unsigned char *compressed_buf;
-  int compressed_len;
   
   if (!vmsfs_check_unit(unit, 0, &info)) {
+    vmu_errno = VMU_NO;
     return false;
   }
   if (!vmsfs_get_superblock(&info, &super)) {
+    vmu_errno = VMU_NORES;
     return false;
   }
   if (!vmsfs_open_file(&super, filename, &file)) {
-    return false;
-  }
-  
-  compressed_len = file.size;
-  compressed_buf = (unsigned char*)malloc(compressed_len);
-  
-  if (!vmsfs_read_file(&file, (Bytef*)compressed_buf, compressed_len)) {
+    vmu_errno = VMU_NOFILE;
     return false;
   }
 
-  uLongf len = *buf_len;
+  clearlcd(&info);
+
+  int size = file.size;
   
-  if (uncompress((Bytef*)buf, &len,(const Bytef*)compressed_buf, (uLong)compressed_len) != Z_OK) {
-    free(compressed_buf);
-    clearlcd(&info);
+  if (!vmsfs_read_file(&file, (unsigned char *)buf, size)) {
+    vmu_errno = VMU_READFAILE;
     return false;
   }
-  free(compressed_buf);
 
-  *buf_len = len;
+  *buf_len = size;
 
   setlcd(&info, lcd);
+
+  vmu_errno = VMU_OK;
 
   return true;
 }

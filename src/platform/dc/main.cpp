@@ -226,7 +226,43 @@ int osGetTimeMS() {
   return int((t.tv_sec - osStartTime) * 1000 + t.tv_usec / 1000);
 }
 
-//#define ENABLE_LANG
+void osCacheWrite(Stream *stream) {
+
+    LOG("cache write : %s\n", stream->name);
+
+    if (strcmp(stream->name, "settings") == 0) {
+      osWriteSlot(stream);
+      return;
+    }
+
+    if (stream->callback)
+      stream->callback(NULL, stream->userData);
+
+    delete stream;
+}
+
+void osCacheRead(Stream *stream) {
+    LOG("cache read : %s\n", stream->name);
+
+    if (strcmp(stream->name, "settings") == 0) {
+      osReadSlot(stream);
+      return;
+    }
+
+    int fd = open(stream->name, O_RDONLY);
+    if (fd>=0) {
+        int size = (int)file_size(fd);
+        char *data = new char[size];
+        read(fd, data, size);
+        close(fd);
+        if (stream->callback)
+            stream->callback(new Stream(stream->name, data, size), stream->userData);
+        delete[] data;
+    } else
+        if (stream->callback)
+            stream->callback(NULL, stream->userData);
+    delete stream;
+}
 
 // memory card
 
@@ -312,7 +348,7 @@ int32 cartRumbleTick = 0;
 struct rumbinfo rumblepack;
 void rumbleInit()
 {
-  rumble_check_unit(0, &rumblepack);
+  rumble_check_unit(1, &rumblepack);
 }
 
 void rumbleSet(bool enable)
@@ -487,14 +523,14 @@ int main()
 	        ta_end_dlist();
       }
 
-      fpsCounter++;
+      //fpsCounter++;
       if (frameIndex >= 60)
       {
           frameIndex -= 60;
           lastFrameIndex -= 30;
           //fps = fpsCounter;
 
-          fpsCounter = 0;
+          //fpsCounter = 0;
       }
     }
 
