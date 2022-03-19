@@ -121,8 +121,6 @@ void pvr_poly_compile(pvr_poly_hdr_t *dst, pvr_poly_cxt_t *src)
 	      pc_set_palette_4bit(cxt, (src->txr.format>>21)&0x3f);
       } else if (format == 6) {
 	      pc_set_palette_8bit(cxt, (src->txr.format>>25)&0x03);
-      } else {
-	      pc_set_strided(cxt, (src->txr.format>>21)&0x1);
       }
     }
 }
@@ -264,6 +262,9 @@ int rumble_check_unit(int unit, struct rumbinfo *info)
   if(info->port<0 || info->port>3 || info->dev<0 || info->dev>5)
     return 0;
 
+  if(info->dev != 1)
+    return 0;
+
   //FIXME: Timer problem if docmd was done somewhere else within 15000s?
   res = maple_docmd(info->port, info->dev, MAPLE_COMMAND_DEVINFO, 0, NULL);
 
@@ -353,14 +354,12 @@ void dc_init_hardware()
 
   dc_reset_target();
 
-  //*(volatile unsigned int *)(0xa05f8108) = PVR_PAL_ARGB4444;
-  *(volatile unsigned int*)(0xa05f80e4) = 640 >> 5; //for stride
-
   pvr_set_bg_color(0.0, 0.0, 0.0);
 
   PVR_FSET(PVR_SMALL_CULL, 0.1f);
 
   PVR_FSET(0x11C, 0.5f);
+  //PVR_FSET(0x108, PVR_PAL_ARGB4444);
 
   /* Init primitive buffer */
   primitive_buffer_init(0, 0, -1);

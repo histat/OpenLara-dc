@@ -252,10 +252,6 @@ namespace GAPI {
 
             opt &= ~(OPT_CUBEMAP | OPT_MIPMAPS);
 
-            if (origWidth == 640) {
-                width = 640;
-            }
-
             LOG("%dx%d orig %dx%d fmt=%d \n",width, height, origWidth,origHeight, fmt);
 
             int size = 0;
@@ -294,12 +290,12 @@ namespace GAPI {
 		            *dst++ = LUMINANCE(c);
 	            }
             } else if (desc.bpp == 16 && fmt == 2) {
-	            int n = origWidth * origHeight;
+	            int n = origWidth * origHeight * 2;
 	            uint16 *dst = (uint16 *)memory;
 	            uint16 *src = (uint16 *)data;
 	            memcpy(dst, src, n);
             } else if (desc.bpp == 16 && fmt == 3) {
-	            int n = origWidth * origHeight;
+	            int n = origWidth * origHeight * 2;
 	            uint16 *dst = (uint16 *)memory;
 	            uint16 *src = (uint16 *)data;
 	            memcpy(dst, src, n);
@@ -307,17 +303,18 @@ namespace GAPI {
 
 	            if (width != origWidth /*|| height != origHeight*/) {
                     uint16 *dst = (uint16 *)memory;
-                    uint8 *src = (uint8 *)data;
+                    uint32 *src = (uint32 *)data;
                     for (int y = 0; y < origHeight; y++) {
 		                int n = origWidth;
             	        uint16 *d = dst;
 		                tex_memcpy_pal(dst, src, n);
 		                dst += width;
+                        src += origWidth;
                     }
 	            } else {
 		            int n = origWidth * origHeight;
 		            uint16 *dst = (uint16 *)memory;
-		            uint8 *src = (uint8 *)data;
+		            uint32 *src = (uint32 *)data;
 		            tex_memcpy_pal(dst, src, n);
 	            }
 	        }
@@ -349,11 +346,7 @@ namespace GAPI {
 	        m_PvrContext.txr.height = height;
 	        m_PvrContext.txr.base = memory;
 	        m_PvrContext.txr.format = desc.textureFormat;
-	  
-	        if (width == 640) {
-	            m_PvrContext.txr.format |= PVR_TXRFMT_STRIDE;
-	        }
-        }
+	    }
 
         typedef struct {
     	    uint16 color[256 * 4];
