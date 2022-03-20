@@ -266,9 +266,11 @@ struct Level : IGame {
                 level.state.flags.flipped = true;
             }
 
+            #ifndef _OS_DC
             uint8 track = level.state.flags.track;
             level.state.flags.track = 0;
             playTrack(track);
+            #endif
         }
 
         statsTimeDelta = 0.0f;
@@ -896,13 +898,8 @@ struct Level : IGame {
 
     static void playAsyncBG(Stream *stream, void *userData) {
         TrackRequest *req = (TrackRequest*)userData;
-        #ifdef _OS_DC
-        if (stream)
-            ;
-        #else
         if (stream)
             Sound::play(stream, NULL, 1.0f, 1.0f, req->flags);
-        #endif
         delete req;
     }
 
