@@ -220,19 +220,19 @@ void sndFree() {
 int osStartTime = 0;
 
 int osGetTimeMS() {
-  struct timeval t;
-  gettimeofday(&t, NULL);
-  return int((t.tv_sec - osStartTime) * 1000 + t.tv_usec / 1000);
+  static unsigned int msecs = 0;
+	static unsigned int last = 0;
+	unsigned int t = Timer();
+	unsigned int diff = t - last;
+	unsigned int steps = (diff<<6) / (100000>>5);
+	diff -= (steps*(100000>>5))>>6;
+	last = t - diff;
+	msecs += steps;
+  return int(msecs-osStartTime);
 }
 
 void osCacheWrite(Stream *stream) {
-
     LOG("cache write : %s\n", stream->name);
-
-    if (strcmp(stream->name, "settings") == 0) {
-      osWriteSlot(stream);
-      return;
-    }
 
     if (stream->callback)
       stream->callback(NULL, stream->userData);
@@ -243,29 +243,15 @@ void osCacheWrite(Stream *stream) {
 void osCacheRead(Stream *stream) {
     LOG("cache read : %s\n", stream->name);
 
-    if (strcmp(stream->name, "settings") == 0) {
-      osReadSlot(stream);
-      return;
-    }
+    if (stream->callback)
+      stream->callback(NULL, stream->userData);
 
-    int fd = open(stream->name, O_RDONLY);
-    if (fd>=0) {
-        int size = (int)file_size(fd);
-        char *data = new char[size];
-        read(fd, data, size);
-        close(fd);
-        if (stream->callback)
-            stream->callback(new Stream(stream->name, data, size), stream->userData);
-        delete[] data;
-    } else
-        if (stream->callback)
-            stream->callback(NULL, stream->userData);
     delete stream;
 }
 
 // memory card
 
-#define MAX_VMU_SIZE 1*1024
+#define MAX_VMU_SIZE 512
 
 static unsigned char lara_icon[32+512];
 static unsigned char lcd_icon[(48/8)*32];
@@ -368,7 +354,7 @@ bool saveVMU(int unit, const char *filename, const char *buf, int size, unsigned
   if (vmsfs_open_file(&super, new_filename, &file))
     free_cnt += file.blks;
 
-  if (((128+512+size+511)/512) > free_cnt) {
+  if (((128+512+size+511)>>9) > free_cnt) {
     vmu_errno = VMU_NOSPACE;
     return false;
   }
@@ -477,9 +463,9 @@ void osReadSlot(Stream *stream) {
       if (stream->callback)
           stream->callback(NULL, stream->userData);
 
-    delete stream;
+  delete stream;
 
-    LOG("%s %d:\n",__FUNCTION__, vmu_errno);
+  LOG("%s %d:\n",__FUNCTION__, vmu_errno);
 }
 
 void osWriteSlot(Stream *stream) {
@@ -723,7 +709,7 @@ int main()
 
     sndFree();
     Game::deinit();
-    
+
     dcExit();
     return 0;
 }

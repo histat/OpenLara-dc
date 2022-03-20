@@ -785,6 +785,17 @@ namespace Core {
         }
 
         void stop() {
+            #ifdef _OS_DC
+            if (fpsTime < Core::getTime()) {
+                //fps     = frame;
+                frame   = 0;
+                fpsTime = Core::getTime() + 1000;
+            } else
+                frame++;
+
+            //frameIndex++;
+
+            #else
             if (fpsTime < Core::getTime()) {
                 LOG("FPS: %d DIP: %d TRI: %d RT: %d\n", fps, dips, tris, rt);
             #ifdef PROFILE
@@ -799,6 +810,7 @@ namespace Core {
                 frame++;
 
             frameIndex++;
+            #endif
         }
     } stats;
 }
