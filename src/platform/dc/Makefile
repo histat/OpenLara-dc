@@ -28,7 +28,7 @@ endif
 OBJS = main.o
 #OBJS += ../../libs/stb_vorbis/stb_vorbis.o
 OBJS += ../../libs/tinf/tinflate.o 
-OBJS += dc_hardware.o libpspvram/valloc.o vmu.o
+OBJS += dc_hardware.o libpspvram/valloc.o
 OBJS += primitive/polygon.o primitive/modifier.o primitive/prim_buffer.o
 
 all: $(TARGET)

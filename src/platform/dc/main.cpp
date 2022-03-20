@@ -9,7 +9,6 @@
 #include <ronin/soundcommon.h>
 
 #include "private.h"
-#include "vmu.h"
 #include "icon_data_2bpp.h"
 
 extern "C" {
@@ -266,19 +265,194 @@ void osCacheRead(Stream *stream) {
 
 // memory card
 
-#define MAX_VMU_SIZE 128*1024
+#define MAX_VMU_SIZE 1*1024
 
-unsigned char lara_icon[32+512];
-unsigned char lcd_icon[(48/8)*32];
+static unsigned char lara_icon[32+512];
+static unsigned char lcd_icon[(48/8)*32];
 
 static int last_vm = -1;
 
+enum vmuresult {
+    VMU_OK,
+    VMU_NO,
+    VMU_NORES,
+    VMU_NOSPACE,
+    VMU_NOFILE,
+    VMU_READFAILE,
+    VMU_WRITEFAILE,
+    VMU_NOFILESPACE
+};
+
+vmuresult vmu_errno;
+
+static void setlcd(struct vmsinfo *info, void *bit)
+{
+  unsigned int param[50];
+
+  param[0] = MAPLE_FUNC_LCD<<24;
+  param[1] = 0;
+  memcpy(param+2, bit, 48*4);
+  maple_docmd(info->port, info->dev, MAPLE_COMMAND_BWRITE, 50, param);
+}
+
+static void conv_lcd_icon(unsigned char *bit, const unsigned char *in)
+{
+  unsigned int *src = (unsigned int *)in;
+  unsigned char *dst = bit + (48/8) * 32;
+
+  for (int i=0; i<32; i++) {
+    unsigned char v;
+    unsigned int b = *src++;
+    v = 0;
+    *--dst = 0xff;
+    for (int j= 0; j<4; j++) {
+      for (int x=0; x<8; x++) {
+	      v <<= 1;
+	      v |= (b & 1)?1:0;
+	      b >>= 1;
+      }
+      *--dst = v;
+    }
+    *--dst = 0xff;
+  }
+}
+
+static void conv_icon(unsigned char *bit, const unsigned char *in)
+{
+  const unsigned char *src = in;
+  unsigned char *dst = ((unsigned char *)bit) + 32;
+  unsigned short *pal = (unsigned short *)bit;
+
+  pal[0] = 0xf000;
+  pal[15] = 0xffff;
+
+  for (int i=0; i<32; i++) {
+    unsigned char v;
+    unsigned char b;
+    for (int j= 0; j<4; j++) {
+      b = *src++;
+      for (int x=0; x<4; x++) {
+	      v = (b & 0x80)?0x00:0xf0;
+	      v |= (b & 0x40)?0x00:0x0f;
+	      b <<= 2;
+	      dst[x] = v;
+      }
+      dst += 4;
+    }
+  }
+}
+
+bool saveVMU(int unit, const char *filename, const char *buf, int size, unsigned char *icon, unsigned char *lcd)
+{
+  struct vms_file_header header;
+  struct vmsinfo info;
+  struct superblock super;
+  struct vms_file file;
+  char new_filename[16];
+  unsigned int free_cnt;
+  time_t long_time;
+  struct tm *now_time;
+  struct timestamp stamp;
+
+  if (!vmsfs_check_unit(unit, 0, &info)) {
+    vmu_errno = VMU_NO;
+    return false;
+  }
+  if (!vmsfs_get_superblock(&info, &super)) {
+    vmu_errno = VMU_NORES;
+    return false;
+  }
+  free_cnt = vmsfs_count_free(&super);
+
+  strncpy(new_filename, filename, sizeof(new_filename));
+  if (vmsfs_open_file(&super, new_filename, &file))
+    free_cnt += file.blks;
+
+  if (((128+512+size+511)/512) > free_cnt) {
+    vmu_errno = VMU_NOSPACE;
+    return false;
+  }
+
+  memset(&header, 0, sizeof(header));
+  strncpy(header.shortdesc, "Save Data",sizeof(header.shortdesc));
+  strncpy(header.longdesc, "OpenLara", sizeof(header.longdesc));
+  strncpy(header.id, "OpenLara", sizeof(header.id));
+  header.numicons = 1;
+  memcpy(header.palette, icon, sizeof(header.palette));
+
+  time(&long_time);
+  now_time = localtime(&long_time);
+  if (now_time != NULL) {
+    stamp.year = now_time->tm_year + 1900;
+    stamp.month = now_time->tm_mon + 1;
+    stamp.wkday = now_time->tm_wday;
+    stamp.day = now_time->tm_mday;
+    stamp.hour = now_time->tm_hour;
+    stamp.minute = now_time->tm_min;
+    stamp.second = now_time->tm_sec;
+  }
+
+  vmu_errno = VMU_OK;
+
+  vmsfs_beep(&info, 1);
+
+  if (!vmsfs_create_file(&super, new_filename, &header, icon+sizeof(header.palette), NULL, buf, size, &stamp)) {
+#ifndef NOSERIAL
+    fprintf(stderr,"%s",vmsfs_describe_error());
+#endif
+    vmsfs_beep(&info, 0);
+    vmu_errno = VMU_WRITEFAILE;
+    return false;
+  }
+  vmsfs_beep(&info, 0);
+
+  setlcd(&info, lcd);
+
+  return true;
+}
+
+bool loadVMU(int unit, const char *filename, char *&buf, int &size, unsigned char *lcd)
+{
+  struct vmsinfo info;
+  struct superblock super;
+  struct vms_file file;
+
+  if (!vmsfs_check_unit(unit, 0, &info)) {
+    vmu_errno = VMU_NO;
+    return false;
+  }
+  if (!vmsfs_get_superblock(&info, &super)) {
+    vmu_errno = VMU_NORES;
+    return false;
+  }
+  if (!vmsfs_open_file(&super, filename, &file)) {
+    vmu_errno = VMU_NOFILE;
+    return false;
+  }
+
+  size = file.size;
+
+  buf = new char[size];
+
+  if (!vmsfs_read_file(&file, (unsigned char *)buf, size)) {
+    vmu_errno = VMU_READFAILE;
+    return false;
+  }
+
+  setlcd(&info, lcd);
+
+  vmu_errno = VMU_OK;
+
+  return true;
+}
+
 void osReadSlot(Stream *stream) {
   LOG("read slot : %s\n", stream->name);
-  
-  int size = MAX_VMU_SIZE;
-  char *data = new char[size];
-  if(last_vm >= 0 && load_from_vmu(last_vm, stream->name, data, &size, lcd_icon)) {
+
+  int size;
+  char *data;
+
+  if(last_vm >= 0 && loadVMU(last_vm, stream->name, data, size, lcd_icon)) {
     if (stream->callback)
       stream->callback(new Stream(stream->name, data, size), stream->userData);
 
@@ -290,7 +464,7 @@ void osReadSlot(Stream *stream) {
   last_vm = -1;
 
   for (int i=0; i<24; i++)
-     if(load_from_vmu(i, stream->name, data, &size, lcd_icon)) {
+     if(loadVMU(i, stream->name, data, size, lcd_icon)) {
       last_vm = i;
       break;
   }
@@ -298,18 +472,29 @@ void osReadSlot(Stream *stream) {
   if (last_vm >= 0) {
     if (stream->callback)
       stream->callback(new Stream(stream->name, data, size), stream->userData);
+    delete[] data;
   } else
       if (stream->callback)
           stream->callback(NULL, stream->userData);
 
-    delete[] data;
     delete stream;
+
+    LOG("%s %d:\n",__FUNCTION__, vmu_errno);
 }
 
 void osWriteSlot(Stream *stream) {
   LOG("write slot : %s 0x%x\n", stream->name, stream->size);
 
-  if (last_vm >= 0 && save_to_vmu(last_vm, stream->name, stream->data, stream->size, lara_icon, lcd_icon)) {
+  if(stream->size > MAX_VMU_SIZE) {
+    vmu_errno = VMU_NOFILESPACE;
+    if (stream->callback)
+      stream->callback(NULL, stream->userData);
+
+    delete stream;
+    return;
+  }
+
+  if (last_vm >= 0 && saveVMU(last_vm, stream->name, stream->data, stream->size, lara_icon, lcd_icon)) {
      if (stream->callback)
       stream->callback(new Stream(stream->name, stream->data, stream->size), stream->userData);
 
@@ -320,7 +505,7 @@ void osWriteSlot(Stream *stream) {
   last_vm = -1;
 
   for (int i=0; i<24; i++)
-    if (save_to_vmu(i, stream->name, stream->data, stream->size, lara_icon, lcd_icon)) {
+    if (saveVMU(i, stream->name, stream->data, stream->size, lara_icon, lcd_icon)) {
       last_vm = i;
       break;
     }
@@ -333,6 +518,8 @@ void osWriteSlot(Stream *stream) {
         stream->callback(NULL, stream->userData);
 
   delete stream;
+
+  LOG("%s %d:\n",__FUNCTION__, vmu_errno);
 }
 
 // Input
