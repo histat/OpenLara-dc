@@ -1534,7 +1534,7 @@ struct Lara : Character {
             Sphere spheres[MAX_JOINTS];
             int count = target->getSpheres(spheres);
             for (int i = 0; i < count; i++) {
-                float st;
+                float st = 0;
                 if (spheres[i].intersect(from, v, st)) {
                     point = from + v * max(t, st);
                     return true;
@@ -2886,7 +2886,7 @@ struct Lara : Character {
 
         // walk button is pressed
         if ((input & WALK) && (input & (LEFT | RIGHT)) && animation.index != ANIM_RUN_START) {
-            int res;
+            int res = STATE_STOP;
 
             float ext = angle.y;
 
