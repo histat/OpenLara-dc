@@ -140,9 +140,6 @@ void osMutexUnlock(void *obj) {
 
 // sound
 
-//int32 fps;
-int32 frameIndex = 0;
-int32 fpsCounter = 0;
 uint32 curSoundBuffer = 0;
 
 #define SND_FRAME_SIZE  4
@@ -208,7 +205,7 @@ void soundFill()
 
 void vblank()
 {
-  frameIndex++;
+  //frameIndex++;
   soundFill();
 }
 
@@ -679,7 +676,7 @@ int main()
     while (!Core::isQuit) {
       joyUpdate();
 
-      int32 frame = frameIndex / 2;
+      int32 frame = Core::stats.frameIndex;
       int32 delta = frame - lastFrameIndex;
 
       lastFrameIndex = frame;
@@ -696,15 +693,6 @@ int main()
 	        ta_end_dlist();
       }
 
-      //fpsCounter++;
-      if (frameIndex >= 60)
-      {
-          frameIndex -= 60;
-          lastFrameIndex -= 30;
-          //fps = fpsCounter;
-
-          //fpsCounter = 0;
-      }
     }
 
     sndFree();

@@ -785,19 +785,10 @@ namespace Core {
         }
 
         void stop() {
-            #ifdef _OS_DC
             if (fpsTime < Core::getTime()) {
-                //fps     = frame;
-                frame   = 0;
-                fpsTime = Core::getTime() + 1000;
-            } else
-                frame++;
-
-            //frameIndex++;
-
-            #else
-            if (fpsTime < Core::getTime()) {
+                #ifndef _OS_DC
                 LOG("FPS: %d DIP: %d TRI: %d RT: %d\n", fps, dips, tris, rt);
+                #endif
             #ifdef PROFILE
                 LOG("frame time: %d mcs\n", tFrame / 1000);
                 LOG("sound: mix %d rev %d ren %d/%d ogg %d\n", Sound::stats.mixer, Sound::stats.reverb, Sound::stats.render[0], Sound::stats.render[1], Sound::stats.ogg);
@@ -810,7 +801,6 @@ namespace Core {
                 frame++;
 
             frameIndex++;
-            #endif
         }
     } stats;
 }

@@ -210,7 +210,7 @@ namespace GAPI {
 	    qacr[0] = qacr[1] = 0xa4;
 
 	    uint32 tmp;
-	    cnt /= 32;
+	    cnt >>= 5;
 	
         while (cnt--) {
           COPY8888TO16(0);
@@ -293,12 +293,12 @@ namespace GAPI {
 	            int n = origWidth * origHeight * 2;
 	            uint16 *dst = (uint16 *)memory;
 	            uint16 *src = (uint16 *)data;
-	            memcpy(dst, src, n);
+                memcpy(dst, src, n);
             } else if (desc.bpp == 16 && fmt == 3) {
 	            int n = origWidth * origHeight * 2;
 	            uint16 *dst = (uint16 *)memory;
 	            uint16 *src = (uint16 *)data;
-	            memcpy(dst, src, n);
+                memcpy(dst, src, n);
             }  else if (desc.bpp == 32) {
 
 	            if (width != origWidth /*|| height != origHeight*/) {
