@@ -140,30 +140,52 @@ void osMutexUnlock(void *obj) {
 
 // sound
 
+const void* TRACKS_IMA=NULL;
+
+void* osLoadtracks()
+{
+// tracks
+    if (!TRACKS_IMA)
+    {
+        int fd = open("data/TRACKS.IMA", O_RDONLY);
+        if (fd < 0)
+            return NULL;
+        int32 size = file_size(fd);
+        uint8* data = new uint8[size];
+        read(fd, data, size);
+        close(fd);
+
+        TRACKS_IMA = data;
+    }
+
+    return (void*)TRACKS_IMA;
+}
+
 uint32 curSoundBuffer = 0;
 
 #define SND_FRAME_SIZE  4
-//#define SND_FRAMES      1152
-#define SND_FRAMES      1024
+#define SND_FRAMES      176
 
-Sound::Frame  sndBuf[SND_FRAMES * 2 + 32] __attribute__((aligned(2)));
-
-uint32* soundBuffer;
+uint32 soundBuffer [SND_FRAMES * 2 + 32] __attribute__((aligned(2)));
 
 void sndInit() {
 
   stop_sound();
   do_sound_command(CMD_SET_BUFFER(3));
   do_sound_command(CMD_SET_STEREO(1));
-  do_sound_command(CMD_SET_FREQ_EXP(FREQ_44100_EXP));
+  do_sound_command(CMD_SET_FREQ_EXP(FREQ_11025_EXP));
+  //do_sound_command(CMD_SET_FREQ_EXP(FREQ_22050_EXP));
 
-  memset(sndBuf, 0, SND_FRAMES * SND_FRAME_SIZE);
+   memset(soundBuffer, 0, SND_FRAMES * SND_FRAME_SIZE);
 
-  soundBuffer = (uint32 *)sndBuf;
+  osLoadtracks();
 }
 
-void soundFill()
+extern void sndFill(uint8* buffer, int32 count);
+
+void vblank()
 {
+  //frameIndex++;
   if (read_sound_int(&SOUNDSTATUS->mode) != MODE_PLAY)
     start_sound();
 
@@ -173,15 +195,33 @@ void soundFill()
   if ((n-=fillpos)<0)
     n += ring_buffer_samples; //n = n + fillpos + (ring_buffer_samples - fillpos)
 
-  if(n < 22)
+  if (n < 21)
     return;
 
+  /*
   if (curSoundBuffer == 1) {
+    
+    uint32 *srcBuffer = soundBuffer;
+    n = SND_FRAMES * 2;
+
+    if (fillpos+n > ring_buffer_samples) {
+      int r = ring_buffer_samples - fillpos;
+      memcpy4s(RING_BUF+fillpos, srcBuffer, SAMPLES_TO_BYTES(r));
+      fillpos = 0;
+      n -= r;
+      memcpy4s(RING_BUF, srcBuffer+r, SAMPLES_TO_BYTES(n));
+    } else {
+      memcpy4s(RING_BUF+fillpos, srcBuffer, SAMPLES_TO_BYTES(n));
+    }
+
+    if ((fillpos += n) >= ring_buffer_samples)
+      fillpos = 0;
   }
-  //sndFill(soundBuffer + curSoundBuffer * SND_SAMPLES, SND_SAMPLES);
-  Sound::fill((Sound::Frame*)soundBuffer + curSoundBuffer * SND_FRAMES, SND_FRAMES);
-  #if 1
+  */
+
   uint32 *srcBuffer = soundBuffer + curSoundBuffer * SND_FRAMES;
+  //sndFill((uint8 *)soundBuffer, SND_FRAMES);
+  sndFill((uint8 *)srcBuffer, SND_FRAMES);
 
   n = SND_FRAMES;
 
@@ -195,18 +235,10 @@ void soundFill()
     memcpy4s(RING_BUF+fillpos, srcBuffer, SAMPLES_TO_BYTES(n));
   }
 
- if ((fillpos += n) >= ring_buffer_samples)
+  if ((fillpos += n) >= ring_buffer_samples)
     fillpos = 0;
 
-#endif
-
   curSoundBuffer ^= 1;
-}
-
-void vblank()
-{
-  //frameIndex++;
-  soundFill();
 }
 
 void sndFree() {
@@ -248,7 +280,7 @@ void osCacheRead(Stream *stream) {
 
 // memory card
 
-#define MAX_VMU_SIZE 512
+#define MAX_VMU_SIZE 128 * 1024
 
 static unsigned char lara_icon[32+512];
 static unsigned char lcd_icon[(48/8)*32];
@@ -434,8 +466,9 @@ void osReadSlot(Stream *stream) {
 
   int size;
   char *data;
-
+  
   if(last_vm >= 0 && loadVMU(last_vm, stream->name, data, size, lcd_icon)) {
+
     if (stream->callback)
       stream->callback(new Stream(stream->name, data, size), stream->userData);
 
@@ -467,15 +500,6 @@ void osReadSlot(Stream *stream) {
 
 void osWriteSlot(Stream *stream) {
   LOG("write slot : %s 0x%x\n", stream->name, stream->size);
-
-  if(stream->size > MAX_VMU_SIZE) {
-    vmu_errno = VMU_NOFILESPACE;
-    if (stream->callback)
-      stream->callback(NULL, stream->userData);
-
-    delete stream;
-    return;
-  }
 
   if (last_vm >= 0 && saveVMU(last_vm, stream->name, stream->data, stream->size, lara_icon, lcd_icon)) {
      if (stream->callback)
@@ -552,6 +576,7 @@ void osJoyVibrate(int index, float L, float R) {
 }
 
 void joyInit() {
+  set_vbl_handler(vblank);
 }
 
 void joyUpdate() {
@@ -570,7 +595,7 @@ void joyUpdate() {
   int mask = getimask();
   setimask(15);
 
-  vblank();
+  //vblank();
 
   int JoyCnt = 0;
 
@@ -676,7 +701,7 @@ int main()
     while (!Core::isQuit) {
       joyUpdate();
 
-      int32 frame = Core::stats.frameIndex;
+      int32 frame = Core::stats.frameIndex / 2;
       int32 delta = frame - lastFrameIndex;
 
       lastFrameIndex = frame;

@@ -18,6 +18,8 @@
 #endif
 
 #ifdef _OS_DC
+#undef DECODE_ADPCM
+#undef DECODE_VAG
 #undef DECODE_OGG
 #endif
 

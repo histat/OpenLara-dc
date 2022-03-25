@@ -14,6 +14,16 @@
 #include "network.h"
 #include "extension.h"
 
+#ifdef _OS_DC
+extern void sndPlayTrack(int32 track);
+extern void sndStopTrack();
+extern bool sndTrackIsPlaying();
+extern void sndStop();
+
+extern void* sndPlaySample(const uint8 *data, int32 volume, int32 pitch, int32 mode);
+extern void sndStopSample(const uint8 *data);
+#endif
+
 #if defined(_DEBUG) && defined(_GAPI_GL) && !defined(_GAPI_GLES)
     #define DEBUG_RENDER
 #endif
@@ -86,7 +96,11 @@ struct Level : IGame {
 // IGame implementation ========
     virtual void loadLevel(TR::LevelID id) {
         sndWater = sndTrack = NULL;
+        #ifdef _OS_DC
+        sndStop();
+        #else
         Sound::stopAll();
+        #endif
         nextLevel = id;
     }
 
@@ -266,11 +280,9 @@ struct Level : IGame {
                 level.state.flags.flipped = true;
             }
 
-            #ifndef _OS_DC
             uint8 track = level.state.flags.track;
             level.state.flags.track = 0;
             playTrack(track);
-            #endif
         }
 
         statsTimeDelta = 0.0f;
@@ -724,9 +736,13 @@ struct Level : IGame {
                         players[i]->camera->shake = 0.5f * max(0.0f, 1.0f - (controller->pos - players[i]->camera->eye.pos).length2() / (15 * 1024 * 15 * 1024));
                 return;
             case TR::Effect::FLOOD : {
+                #ifdef _OS_DC
+                playSound(TR::SND_FLOOD);
+                #else
                 Sound::Sample *sample = playSound(TR::SND_FLOOD);
                 if (sample)
                     sample->setVolume(0.0f, 4.0f);
+                #endif
                 break;
             }
             case TR::Effect::STAIRS2SLOPE :
@@ -839,6 +855,10 @@ struct Level : IGame {
 
         int16 a = level.soundsMap[id];
         if (a == -1) return NULL;
+        #ifdef _OS_DC
+        if (flags & Sound::MUSIC)
+            return NULL;
+        #endif
 
         TR::SoundInfo &b = level.soundsInfo[a];
         if (b.chance == 0 || randf() <= b.chance) {
@@ -857,19 +877,43 @@ struct Level : IGame {
                     case 3 : if (!(level.version & TR::VER_TR1)) flags |= Sound::LOOP | Sound::UNIQUE; break;
                 }
             }
+
             if (b.flags.gain) volume = max(0.0f, volume - randf() * 0.25f);
             //if (b.flags.camera) flags &= ~Sound::PAN;
+            #ifdef _OS_DC
+            if (volume > 0.001f) {
+                if (!(flags & (Sound::FLIPPED | Sound::UNFLIPPED | Sound::MUSIC)) && (flags & Sound::PAN)) {
+                    vec3 listenerPos = Sound::getListener(pos).matrix.getPos();
+                    vec3 d = pos - listenerPos;
+
+                    if (fabsf(d.x) > SND_FADEOFF_DIST || fabsf(d.y) > SND_FADEOFF_DIST || fabsf(d.z) > SND_FADEOFF_DIST) {
+                        return NULL;
+                    }
+                }
+
+                const uint8 *data = (const uint8*)level.soundData + level.soundOffsets[index];
+                int32 intvolume = volume * 64;
+                int32 intpitch = pitch * 128;
+                sndPlaySample(data, intvolume, intpitch, flags);
+            }
+            #else
             return Sound::play(level.getSampleStream(index), &pos, volume, pitch, flags, id);
+            #endif
         }
         return NULL;
     }
 
     void stopChannel(Sound::Sample *channel) {
+        #ifdef _OS_DC
+        if (level.state.flags.track != TR::LEVEL_INFO[level.id].track && TR::LEVEL_INFO[level.id].track != TR::NO_TRACK) // play ambient track
+                playTrack(0);
+        #else
         if (channel == sndTrack) {
             sndTrack = NULL;
             if (level.state.flags.track != TR::LEVEL_INFO[level.id].track && TR::LEVEL_INFO[level.id].track != TR::NO_TRACK) // play ambient track
                 playTrack(0);
         }
+        #endif
     }
 
     struct TrackRequest {
@@ -879,6 +923,7 @@ struct Level : IGame {
         TrackRequest(Level *level, int flags) : level(level), flags(flags) {}
     };
 
+    #ifndef _OS_DC
     static void playAsync(Stream *stream, void *userData) {
         TrackRequest *req = (TrackRequest*)userData;
         Level *level = req->level;
@@ -902,10 +947,15 @@ struct Level : IGame {
             Sound::play(stream, NULL, 1.0f, 1.0f, req->flags);
         delete req;
     }
+    #endif
 
     virtual void playTrack(uint8 track, bool background = false) {
         if (background) {
+            #ifdef _OS_DC
+            sndPlayTrack(track);
+            #else
             TR::getGameTrack(level.version, track, playAsyncBG, new TrackRequest(this, Sound::MUSIC));
+            #endif
             return;
         }
 
@@ -936,13 +986,21 @@ struct Level : IGame {
             flags |= Sound::LOOP;
 
         waitTrack = true;
+        #ifdef _OS_DC
+        sndPlayTrack(track);
+        #else
         TR::getGameTrack(level.version, track, playAsync, new TrackRequest(this, flags));
+        #endif
 
         UI::showSubs(TR::getSubs(level.version, track));
     }
 
     virtual void stopTrack() {
+        #ifdef _OS_DC
+        sndStopTrack();
+        #else
         playTrack(0xFF);
+        #endif
     }
 //==============================
 
@@ -1087,7 +1145,11 @@ struct Level : IGame {
         #endif
         delete mesh;
 
+        #ifdef _OS_DC
+        sndStop();
+        #else
         Sound::stopAll();
+        #endif
     }
 
     void init(bool playLogo, bool playVideo) {

@@ -1,7 +1,7 @@
 ronindir = $(HOME)/repo/libronin
 SH_ELF_BIN = /opt/toolchains/dc/sh-elf/bin
 
-DEBUG = 0
+DEBUG = 1
 
 OPTIMISE = -Wall -Os -fomit-frame-pointer -ffast-math -mfsrra -mfsca -mpretend-cmove
 
@@ -25,7 +25,7 @@ ifeq ($(DEBUG), 0)
 endif
 
 
-OBJS = main.o
+OBJS = main.o sound.o
 #OBJS += ../../libs/stb_vorbis/stb_vorbis.o
 OBJS += ../../libs/tinf/tinflate.o 
 OBJS += dc_hardware.o libpspvram/valloc.o

@@ -2407,8 +2407,16 @@ struct Lara : Character {
     }
 
     void stopScreaming() {
+        #ifdef _OS_DC
+        extern void sndStopSample(const uint8 *data);
+        const uint8 *data = (const uint8*)level->soundData + level->soundOffsets[TR::SND_SCREAM] + 4;
+        if (velocity.y >= 154.0f)
+            sndStopSample(data);
+
+        #else
         if (velocity.y >= 154.0f)
             Sound::stop(TR::SND_SCREAM);
+        #endif
     }
 
     virtual int getHeight() {
