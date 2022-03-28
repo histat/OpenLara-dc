@@ -274,7 +274,7 @@ void* sndPlaySample(const uint8 *data, int32 volume, int32 pitch, int32 mode)
     #endif
 
     //printf("%s 0x%x 0x%x\n",__FUNCTION__, data, size);
-    if (mode & (UNIQUE | REPLAY))
+    if (mode & (UNIQUE | REPLAY | LOOP))
     {
         for (int32 i = 0; i < channelsCount; i++)
         {
@@ -286,7 +286,7 @@ void* sndPlaySample(const uint8 *data, int32 volume, int32 pitch, int32 mode)
             sample->inc = CALC_INC;
             sample->volume = volume;
 
-            if (mode & REPLAY)
+            if (mode & (REPLAY | LOOP))
             {
                 sample->pos = 0;
             }
