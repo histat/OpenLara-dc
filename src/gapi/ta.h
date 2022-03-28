@@ -166,7 +166,7 @@ namespace GAPI {
 
     #define ARGB1555(r,g,b,a)	( (((r)>>3)<<10) | (((g)>>3)<<5) |((b)>>3) | (((a)&0x80)<<8) )
     #define ARGB8888(r,g,b,a)	( ((a) << 24) | ((r)<<16) | ((g)<<8) | (b) )
-    #define LUMINANCE(a)	((((a)>>4)*0x111)|0xf0e0)
+    #define LUMINANCE(a)	((((a)>>4)*0x111)|0xf000)
 
     void upload_vram(uint8 *out, const uint8 *in, uint32 w, uint32 h) {
 	    uint8 *dst = out + 2048;
@@ -177,14 +177,62 @@ namespace GAPI {
 	    volatile unsigned int *qacr = (volatile unsigned int *)0xff000038;
 	    qacr[0] = qacr[1] = 0xa4;
 	
-	    int cnt = w * h / 32;
+	    int cnt = w * h;
+        cnt >>= 6;
 
     	while (cnt--) {
-	        __asm__("pref @%0" : : "r" (s+8));
 	        d[0] = *s++;
 	        d[1] = *s++;
 	        d[2] = *s++;
 	        d[3] = *s++;
+            __asm__("pref @%0" : : "r" (s+8));
+	        d[4] = *s++;
+	        d[5] = *s++;
+	        d[6] = *s++;
+	        d[7] = *s++;
+	        __asm__("pref @%0" : : "r" (d));
+	        d += 8;
+	        d[0] = *s++;
+	        d[1] = *s++;
+	        d[2] = *s++;
+	        d[3] = *s++;
+            __asm__("pref @%0" : : "r" (s+8));
+	        d[4] = *s++;
+	        d[5] = *s++;
+	        d[6] = *s++;
+	        d[7] = *s++;
+	        __asm__("pref @%0" : : "r" (d));
+	        d += 8;
+	    }
+    }
+
+    void tex_memcpy(void *dest, void *src, uint32 cnt) {
+	    uint32 *s = (uint32 *)src;
+	    uint32 *d = (uint32 *)(void *)				\
+	        (0xe0000000 | (((unsigned long)dest) & 0x03ffffc0));
+
+	    volatile unsigned int *qacr = (volatile unsigned int *)0xff000038;
+	    qacr[0] = qacr[1] = 0xa4;
+
+        cnt >>= 6;
+
+        while (cnt--) {
+	        d[0] = *s++;
+	        d[1] = *s++;
+	        d[2] = *s++;
+	        d[3] = *s++;
+            __asm__("pref @%0" : : "r" (s+8));
+	        d[4] = *s++;
+	        d[5] = *s++;
+	        d[6] = *s++;
+	        d[7] = *s++;
+	        __asm__("pref @%0" : : "r" (d));
+	        d += 8;
+	        d[0] = *s++;
+	        d[1] = *s++;
+	        d[2] = *s++;
+	        d[3] = *s++;
+            __asm__("pref @%0" : : "r" (s+8));
 	        d[4] = *s++;
 	        d[5] = *s++;
 	        d[6] = *s++;
@@ -289,16 +337,20 @@ namespace GAPI {
 		            uint8 c = *src++;
 		            *dst++ = LUMINANCE(c);
 	            }
-            } else if (desc.bpp == 16 && fmt == 2) {
-	            int n = origWidth * origHeight * 2;
-	            uint16 *dst = (uint16 *)memory;
-	            uint16 *src = (uint16 *)data;
-                memcpy(dst, src, n);
-            } else if (desc.bpp == 16 && fmt == 3) {
-	            int n = origWidth * origHeight * 2;
-	            uint16 *dst = (uint16 *)memory;
-	            uint16 *src = (uint16 *)data;
-                memcpy(dst, src, n);
+            } else if (desc.bpp == 16) {
+                uint16 *dst = (uint16 *)memory;
+                uint16 *src = (uint16 *)data;
+                if (width != origWidth /*|| height != origHeight*/) {
+                    for (int y = 0; y < origHeight; y++) {
+		                int n = origWidth * 2;
+		                tex_memcpy(dst, src, n);
+		                dst += width;
+                        src += origWidth;
+                    }
+                } else {
+                    int n = origWidth * origHeight * 2;
+                    tex_memcpy(dst, src, n);
+                }
             }  else if (desc.bpp == 32) {
 
 	            if (width != origWidth /*|| height != origHeight*/) {
@@ -659,7 +711,7 @@ namespace GAPI {
         result.l = (255 - min(255, int32(lighting)));
     }
 
-    bool transform(const Index *indices, const Vertex *vertices, int iStart, int iCount, int vStart) {
+    void transform(const Index *indices, const Vertex *vertices, int iStart, int iCount, int vStart) {
 
         #if 0
         mat4 swMatrix;
@@ -783,8 +835,8 @@ namespace GAPI {
 
             applyLighting(result, vertex, c.w);
 
-            uint32 u = uint32(result.u) & 0xffff;
-            uint32 v = uint32(result.v) & 0xffff;
+            uint32 u = uint32(result.u);
+            uint32 v = uint32(result.v);
 
             uint8 tIndex;
 
@@ -859,15 +911,14 @@ namespace GAPI {
                     u = uint32(result.u) * 1 / 32767.0f * 255;
                     v = uint32(result.v) * 1 / 32767.0f * 255;
                 }
-
             }
 
 
             vertex_buffer[vcount].x = result.x;
             vertex_buffer[vcount].y = result.y;
             vertex_buffer[vcount].z = result.z;
-            vertex_buffer[vcount].u = (u / 255.0f);
-            vertex_buffer[vcount].v = (v / 255.0f);
+            vertex_buffer[vcount].u = u * 1 / 255.0f;
+            vertex_buffer[vcount].v = v * 1 / 255.0f;
             vertex_buffer[vcount].base.color = argb;
             vertex_buffer[vcount].offset.color = oargb;
 
@@ -888,7 +939,6 @@ namespace GAPI {
             }
         }
 
-        return colored;
     }
 
     void transformLights() {
@@ -910,7 +960,7 @@ namespace GAPI {
 
         Tile8 *oldTile = curTile;
 
-        bool colored = transform(mesh->iBuffer, mesh->vBuffer, range.iStart, range.iCount, range.vStart);
+        transform(mesh->iBuffer, mesh->vBuffer, range.iStart, range.iCount, range.vStart);
 
         curTile = oldTile;
     }
