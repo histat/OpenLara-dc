@@ -71,6 +71,8 @@
     #undef LOG
     #define LOG(...)
 #endif
+    #undef ASSERT
+    #define ASSERT(expr)
 #endif
 
 #ifdef _OS_PSP
