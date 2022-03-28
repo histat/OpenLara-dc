@@ -10,6 +10,7 @@
 #include "npvr_vertex.h"
 #include <ronin/ronin.h>
 #include <ronin/gddrive.h>
+#include <ronin/soundcommon.h>
 #include "banner_data.h"
 
 extern void LaunchMenu();
@@ -298,6 +299,31 @@ int rumble_set(struct rumbinfo *info, int on)
 
   return 0;
 }
+
+void g2_memcpy4s(void *s1, const void *s2, unsigned int n)
+{
+  uint32 *p1a = s1;
+  uint32 *p1b = (void*)(((char *)s1)+SAMPLES_TO_BYTES(STEREO_OFFSET));
+  const uint32 *p2 = s2;
+  n+=3;
+  n>>=2;
+  while(n--) {
+    uint32 a = *p2++;
+    uint32 b = *p2++;
+    *p1a++ = (a & 0xffff) | ((b & 0xffff)<<16);
+    *p1b++ = ((a & 0xffff0000)>>16) | (b & 0xffff0000);
+
+    if(!(n & 3)) {
+      uint32 i = 0x1800;
+      // aica FIFO
+      for (; i >=0; --i)
+          if(!(*(volatile uint32*)0xa05f688c & 0x11)) break;
+    }
+
+  }
+}
+
+
 
 #define TA_LIST_ENABLE_DEFAULT (TA_LIST_OPAQUEPOLY|TA_LIST_TRANSPOLY|TA_LIST_PUNCHTHROUGH)
 //#define TA_LIST_ENABLE_DEFAULT (TA_LIST_OPAQUEPOLY|TA_LIST_OPAQUEMOD|TA_LIST_TRANSPOLY)

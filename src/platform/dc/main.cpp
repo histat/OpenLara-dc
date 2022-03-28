@@ -174,11 +174,12 @@ void sndInit() {
   do_sound_command(CMD_SET_BUFFER(3));
   do_sound_command(CMD_SET_STEREO(1));
   do_sound_command(CMD_SET_FREQ_EXP(FREQ_11025_EXP));
-  //do_sound_command(CMD_SET_FREQ_EXP(FREQ_22050_EXP));
 
-   memset(soundBuffer, 0, SND_FRAMES * SND_FRAME_SIZE);
+  memset(soundBuffer, 0, SND_FRAMES * SND_FRAME_SIZE);
 
   osLoadtracks();
+
+  gCurTrack = -1;
 }
 
 extern void sndFill(uint8* buffer, int32 count);
@@ -195,29 +196,8 @@ void vblank()
   if ((n-=fillpos)<0)
     n += ring_buffer_samples; //n = n + fillpos + (ring_buffer_samples - fillpos)
 
-  if (n < 21)
+  if (n < 20)
     return;
-
-  /*
-  if (curSoundBuffer == 1) {
-    
-    uint32 *srcBuffer = soundBuffer;
-    n = SND_FRAMES * 2;
-
-    if (fillpos+n > ring_buffer_samples) {
-      int r = ring_buffer_samples - fillpos;
-      memcpy4s(RING_BUF+fillpos, srcBuffer, SAMPLES_TO_BYTES(r));
-      fillpos = 0;
-      n -= r;
-      memcpy4s(RING_BUF, srcBuffer+r, SAMPLES_TO_BYTES(n));
-    } else {
-      memcpy4s(RING_BUF+fillpos, srcBuffer, SAMPLES_TO_BYTES(n));
-    }
-
-    if ((fillpos += n) >= ring_buffer_samples)
-      fillpos = 0;
-  }
-  */
 
   uint32 *srcBuffer = soundBuffer + curSoundBuffer * SND_FRAMES;
   //sndFill((uint8 *)soundBuffer, SND_FRAMES);
@@ -227,12 +207,12 @@ void vblank()
 
   if (fillpos+n > ring_buffer_samples) {
     int r = ring_buffer_samples - fillpos;
-    memcpy4s(RING_BUF+fillpos, srcBuffer, SAMPLES_TO_BYTES(r));
+    g2_memcpy4s(RING_BUF+fillpos, srcBuffer, SAMPLES_TO_BYTES(r));
     fillpos = 0;
     n -= r;
-    memcpy4s(RING_BUF, srcBuffer+r, SAMPLES_TO_BYTES(n));
+    g2_memcpy4s(RING_BUF, srcBuffer+r, SAMPLES_TO_BYTES(n));
   } else {
-    memcpy4s(RING_BUF+fillpos, srcBuffer, SAMPLES_TO_BYTES(n));
+    g2_memcpy4s(RING_BUF+fillpos, srcBuffer, SAMPLES_TO_BYTES(n));
   }
 
   if ((fillpos += n) >= ring_buffer_samples)
@@ -280,7 +260,7 @@ void osCacheRead(Stream *stream) {
 
 // memory card
 
-#define MAX_VMU_SIZE 128 * 1024
+#define MAX_VMU_SIZE 4 * 1024
 
 static unsigned char lara_icon[32+512];
 static unsigned char lcd_icon[(48/8)*32];
@@ -595,8 +575,6 @@ void joyUpdate() {
   int mask = getimask();
   setimask(15);
 
-  //vblank();
-
   int JoyCnt = 0;
 
   struct mapledev *pad = locked_get_pads();
@@ -691,10 +669,10 @@ int main()
     Game::init();
 
     //Game::init("PSXDATA/GYM.PSX");
-    //Game::init("PSXDATA/LEVEL1.PSX");
-    //Game::init("PSXDATA/LEVEL2.PSX");
+    //Game::init("DATA/LEVEL1.PHD");
+    //Game::init("DATA/LEVEL2.PHD");
     //Game::init("DEMODATA/LEVEL2.DEM");
-    //Game::init("PSXDATA/CUT1.PSX");
+    //Game::init("DATA/CUT1.PHD");
 
     int32 lastFrameIndex = -1;
 

@@ -533,6 +533,8 @@ struct rumbinfo {
 int rumble_check_unit(int unit, struct rumbinfo *info);
 int rumble_set(struct rumbinfo *info, int on);
 
+void g2_memcpy4s(void *s1, const void *s2, unsigned int n);
+
 void dc_init_hardware();
 
 #if defined(__cplusplus) || defined(c_plusplus)
