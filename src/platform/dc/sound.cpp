@@ -274,9 +274,6 @@ void* sndPlaySample(const uint8 *data, int32 volume, int32 pitch, int32 mode)
     #endif
 
     //printf("%s 0x%x 0x%x\n",__FUNCTION__, data, size);
-
-    //printf("%s 0x%x 0x%x\n",__FUNCTION__, data[0], data[1]);
-
     if (mode & (UNIQUE | REPLAY))
     {
         for (int32 i = 0; i < channelsCount; i++)
@@ -308,7 +305,6 @@ void* sndPlaySample(const uint8 *data, int32 volume, int32 pitch, int32 mode)
     sample->inc  = CALC_INC;
     sample->volume = volume;
 
-    //printf("%s 0x%x 0x%x\n",__FUNCTION__, channelsCount , size);
     //printf("%s 0x%x 0x%x\n",__FUNCTION__, channelsCount , sample->data);
 
     return sample;
@@ -316,6 +312,8 @@ void* sndPlaySample(const uint8 *data, int32 volume, int32 pitch, int32 mode)
 
 void sndPlayTrack(int32 track)
 {
+    if (!TRACKS_IMA)
+        return;
 
     if (track == gCurTrack)
         return;
@@ -336,6 +334,8 @@ void sndPlayTrack(int32 track)
 
     if (!info->size)
         return;
+
+    //printf("%s 0x%x 0x%x\n",__FUNCTION__, info->offset , info->size);
 
     music.data = (uint8*)TRACKS_IMA + info->offset;
     music.size = info->size;
@@ -389,7 +389,7 @@ void sndFill(uint8* buffer, int32 count)
 
     if ((channelsCount == 0) && !music.data)
     {
-        dmaFill(buffer, SND_ENCODE(0), count * 4);
+        dmaFill(buffer, 0, count * 4);
         return;
     }
 
