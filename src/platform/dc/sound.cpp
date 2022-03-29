@@ -21,7 +21,7 @@ typedef signed int         int32;
 #endif
 
 #define SND_FIXED_SHIFT 8
-#define SND_VOL_SHIFT   8
+#define SND_VOL_SHIFT   6
 #define SND_PITCH_SHIFT 7
 
     #define SND_SAMPLES      176
@@ -265,7 +265,6 @@ void* sndPlaySample(const uint8 *data, int32 volume, int32 pitch, int32 mode)
 
     #if 0
     int32 size = *(int32*)(data + 40);
-    //uint8* src = (uint8 *)(data + 44);
     data += 44;
     #else
     const uint8 *ptr = (data + 40);

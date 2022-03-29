@@ -738,13 +738,9 @@ struct Level : IGame {
                         players[i]->camera->shake = 0.5f * max(0.0f, 1.0f - (controller->pos - players[i]->camera->eye.pos).length2() / (15 * 1024 * 15 * 1024));
                 return;
             case TR::Effect::FLOOD : {
-                #ifdef _OS_DC
-                playSound(TR::SND_FLOOD);
-                #else
                 Sound::Sample *sample = playSound(TR::SND_FLOOD);
                 if (sample)
                     sample->setVolume(0.0f, 4.0f);
-                #endif
                 break;
             }
             case TR::Effect::STAIRS2SLOPE :

@@ -9,6 +9,10 @@
     #define NO_VIDEO
 #endif
 
+#ifdef _OS_DC
+    #define NO_VIDEO
+#endif
+
 struct AC_ENTRY {
     uint8 code;
     uint8 skip;
