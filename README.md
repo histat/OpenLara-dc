@@ -14,7 +14,7 @@ imgmount d ".\game.dat" -t iso -fs iso
 xcopy D:\DATA\ C:\DATA\
 ```
 - Optional: DELDATA included in psone version of tomb raider for level or tittle screen
-- Optional: TRACKS.IMA in gba demo
+- Optional: TRACKS.IMA in [gba demo](https://github.com/XProger/OpenLara/tree/master/src/platform/gba/data)
 - example
 ```bash
   DATA/*.PHD
