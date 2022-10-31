@@ -16,6 +16,7 @@
 #include <../hardware/pvr/pvr_internal.h>
 #include "banner_data.h"
 
+
 extern void _audio_init();
 extern void _audio_free();
 
@@ -34,14 +35,18 @@ pvr_ptr_t kos_mem_malloc(size_t size)
 {
   void *ret = psp_valloc(size);
 
+#ifndef NOSERIAL
   printf("[%s] tex = %p size 0x%x\n", __func__, ret, size);
+#endif
 
   return (pvr_ptr_t)(ret);
 }
 
 void kos_mem_free(pvr_ptr_t chunk)
 {
+#ifndef NOSERIAL
   printf("[%s] tex = %p\n", __func__, chunk);
+#endif
   
   psp_vfree(chunk);
 }
@@ -131,8 +136,9 @@ int  arch_auto_init() {
     dbgio_init();
 
     /* Print a banner */
-    if(__kos_init_flags & INIT_QUIET)
-        dbgio_disable();
+    #ifdef NOSERIAL
+    dbgio_disable();
+    #endif
 
     timer_init();           /* Timers */
     hardware_sys_init();        /* DC low-level hardware init */
@@ -224,15 +230,17 @@ void dc_init_hardware()
   
   pvr_mem_base = (pvr_ptr_t)(PVR_RAM_INT_BASE + pvr_state.texture_base);
   //pvr_mem_base = 0xa4000000;
+#ifndef NOSERIAL
   printf("reset pvr_mem_base at 0x%4x ", pvr_mem_base);
+#endif
   
   pvr_set_zclip(0.0f);
   
   pvr_set_bg_color(0.0, 0.0, 0.0);
 
-  //PVR_FSET(PVR_SMALL_CULL, 0.1f);
+  PVR_FSET(PVR_SMALL_CULL, 0.1f);
 
-  //PVR_FSET(0x11C, 0.5f);
+  PVR_FSET(0x11C, 0.5f);
   PVR_SET(0x0e4, (640 >> 5));
 
   for (n = 0; n < 256; n++) {
