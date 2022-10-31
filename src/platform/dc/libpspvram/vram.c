@@ -13,7 +13,7 @@
 
 // Configure the memory to be managed
 #define __MEM_SIZE 0x00400000
-#define __MEM_START 0xa4400000
+#define __MEM_START (0xa4000000 & ~(0x80000000))
 
 // Configure the block size the memory gets subdivided into (page size)
 // __MEM_SIZE/__BLOCK_SIZE may not exceed 2^16-1 = 65535

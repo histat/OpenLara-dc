@@ -3,30 +3,19 @@
 
 #include "core.h"
 
-#include <ronin/ta.h>
-#include <ronin/matrix.h>
 #include "private.h"
+#include "xmtrx.h"
 #include "primitive/primitive.h"
 
 #define PROFILE_MARKER(title)
 #define PROFILE_LABEL(id, name, label)
 #define PROFILE_TIMING(time)
 
-//#define COLOR_16
+#define ENABLE_FOG
 
-#ifdef COLOR_16
-    #define COLOR_FMT_555
-    #define CONV_COLOR(r,g,b) (((r >> 3) << 10) | ((g >> 3) << 5) | (b >> 3) | (1 << 15))
-#else 
-    #define COLOR_FMT_888
-    #define CONV_COLOR24(r,g,b) ((r << 16) | (g << 8) | b)
-    #define CONV_COLOR(r,g,b) ((r << 16) | (g << 8) | b | (255 << 24))
-#endif
+#define INV_SHORT_HALF      (1.0 / 32767.0)
 
-#define SW_MAX_DIST  (20.0f * 1024.0f)
-#define SW_FOG_START (12.0f * 1024.0f)
-
-//#define ENABLE_FOG
+#define CONV_COLOR(r,g,b) (((r >> 3) << 10) | ((g >> 3) << 5) | (b >> 3) | (1 << 15))
 
 namespace GAPI {
 
@@ -34,49 +23,46 @@ namespace GAPI {
 
     typedef ::Vertex Vertex;
 
-    #ifdef COLOR_16
-        typedef uint16 ColorSW;
-    #else
-        typedef uint32 ColorSW;
-    #endif
-    //typedef uint16 DepthSW;
-
-    ColorSW *swPalette;
+    typedef uint16 ColorSW;
     ColorSW swPaletteColor[256];
-    ColorSW swPaletteWater[256];
-    ColorSW swPaletteGray[256];
-    uint8   swGradient[256];
-    Tile8   *curTile;
-    ColorSW swPaletteLight[256 * 2];
+
+    xMatrix ScreenView;
+    xMatrix ViewProj;
+
+    enum {
+      PaletteColor,
+      PaletteWater,
+      PaletteGray,
+    };
+    int PaletteFlag;
 
     #ifdef ENABLE_FOG
     float FogParams;
+    //uint32 fogColor;
     #endif
 
-    uint8 ambient;
+    vec3 ambient;
     int32 lightsCount;
 
-    struct LightSW {
-        uint32 intensity;
-        vec3   pos;
-        float  radius;
-    } lights[MAX_LIGHTS], lightsRel[MAX_LIGHTS];
+   struct LightPVR {
+     vec3 intensity;
+     vec3  pos;
+     float att;
+   } lights[MAX_LIGHTS];
 
     pvr_ptr_t pvr_base_mem;
 
     pvr_ptr_t allocVRAM(unsigned int size) {
-      pvr_base_mem = pvr_mem_malloc(size);
+      pvr_base_mem = kos_mem_malloc(size);
       return pvr_base_mem;
     }
 
     void freeVRAM() {
       if (pvr_base_mem != NULL)
-        pvr_mem_free(pvr_base_mem);
+        kos_mem_free(pvr_base_mem);
 
       pvr_base_mem = NULL;
     }
-
-    mat4 m_Matrix[4] __attribute__((aligned(32)));
 
     pvr_poly_cxt_t m_PvrContext;
 
@@ -89,6 +75,8 @@ namespace GAPI {
     int AlphaBlendSrc;
     int AlphaBlendDst;
 
+    
+
     enum {
         FALSE = false,
         TRUE = true
@@ -96,15 +84,15 @@ namespace GAPI {
 
     void ReCompileHeader(pvr_poly_hdr_t *dst) {
 
-	    //m_PvrContext.txr.enable = PVR_TEXTURE_DISABLE;
+      //m_PvrContext.txr.enable = PVR_TEXTURE_DISABLE;
 
         if(AlphaBlendEnable || AlphaTestEnable) {
-	        m_PvrContext.list_type = PVR_LIST_TR_POLY;
 	        m_PvrContext.gen.alpha = PVR_ALPHA_ENABLE;
 	        m_PvrContext.txr.alpha = PVR_TXRALPHA_ENABLE;
 	        m_PvrContext.txr.env = PVR_TXRENV_MODULATEALPHA;
 
 	        if(AlphaBlendEnable) {
+		    m_PvrContext.list_type = PVR_LIST_TR_POLY;
 	            m_PvrContext.blend.src = AlphaBlendSrc;
 	            m_PvrContext.blend.dst = AlphaBlendDst;
 	        } else {
@@ -136,7 +124,7 @@ namespace GAPI {
 
         m_PvrContext.gen.culling = CullMode;
 
-        pvr_poly_compile(dst, &m_PvrContext);
+        kos_poly_compile(dst, &m_PvrContext);
     }
 
 
@@ -154,7 +142,7 @@ namespace GAPI {
     static const struct FormatDesc {
       int bpp, textureFormat;
     } formats[FMT_MAX] = {
-      {  8, PVR_TXRFMT_ARGB4444|PVR_TXRFMT_NONTWIDDLED}, // LUMINANCE
+      {  8, PVR_TXRFMT_PAL8BPP|PVR_TXRFMT_8BPP_PAL(0)}, // LUMINANCE
       { 32, PVR_TXRFMT_ARGB1555|PVR_TXRFMT_NONTWIDDLED}, // RGBA
       { 16, PVR_TXRFMT_RGB565|PVR_TXRFMT_NONTWIDDLED}, // RGB16
       { 16, PVR_TXRFMT_ARGB1555|PVR_TXRFMT_NONTWIDDLED}, // RGBA16
@@ -166,7 +154,42 @@ namespace GAPI {
 
     #define ARGB1555(r,g,b,a)	( (((r)>>3)<<10) | (((g)>>3)<<5) |((b)>>3) | (((a)&0x80)<<8) )
     #define ARGB8888(r,g,b,a)	( ((a) << 24) | ((r)<<16) | ((g)<<8) | (b) )
-    #define LUMINANCE(a)	((((a)>>4)*0x111)|0xf000)
+    #define LUMINANCE(a)	(a)
+
+
+#define TWIDTAB(x) ( (x&1)|((x&2)<<1)|((x&4)<<2)|((x&8)<<3)|((x&16)<<4)| \
+                     ((x&32)<<5)|((x&64)<<6)|((x&128)<<7)|((x&256)<<8)|((x&512)<<9) )
+#define TWIDOUT(x, y) ( TWIDTAB((y)) | (TWIDTAB((x)) << 1) )
+
+#define MIN(a, b) ( (a)<(b)? (a):(b) )
+
+        void twiddle(uint8 *out, const uint8 *in, uint32 w, uint32 h, int bpp) {
+	  int x,y,min,mask,yout;
+        
+	  min = MIN(w, h);
+	  mask = min - 1;
+        
+	  switch (bpp) {
+	  case 8: {
+	    uint8 * pixels;
+	    uint16 * vtex;
+	    pixels = (uint8 *)in;
+	    vtex = (uint16 *)out;
+	    for (y=0; y<h; y += 2) {
+	      yout = y;
+	      for (x=0; x<w; x++) {
+		vtex[TWIDOUT((yout&mask)/2, x&mask) + 
+		     (x/min + yout/min)*min*min/2] = 
+		  pixels[y*w+x] | (pixels[(y+1)*w+x]<<8);
+	      }
+	    }
+	  }
+	    break;
+	  };
+	}
+#undef TWIDTAB
+#undef TWIDOUT
+#undef MIN
 
     void upload_vram(uint8 *out, const uint8 *in, uint32 w, uint32 h) {
 	    uint8 *dst = out + 2048;
@@ -300,28 +323,40 @@ namespace GAPI {
 
             opt &= ~(OPT_CUBEMAP | OPT_MIPMAPS);
 
-            LOG("%dx%d orig %dx%d fmt=%d \n",width, height, origWidth,origHeight, fmt);
+	    FormatDesc desc = formats[fmt];
+
+	    if (origWidth == 640) {
+	      width = 640;
+	    }
+
+	    LOG("%dx%d orig %dx%d fmt=%d \n",width, height, origWidth,origHeight, fmt);
 
             int size = 0;
-            size = width * height * 2;
 
-            memory = pvr_mem_malloc(size);
+	    if (desc.bpp == 8) {
+	      size = width * height * 1;
+	    } else {
+	      size = width * height * 2;
+	    }
+
+            memory = kos_mem_malloc(size);
 
             if (memory == NULL) {
-	          LOG("Unable to create %dx%dx%d \n", width, height, size);
-	        }
+	          LOG("Unable to create %dx%dx 0x%x \n", width, height, size);
+	    }
 
-            if (data) {
+            if (data && memory) {
                 update(data);
             }
         }
 
         void deinit() {
             if (memory) {
-                pvr_mem_free(memory);
+                kos_mem_free(memory);
                 memory = NULL;
             }
         }
+
 
         void generateMipMap() {}
 
@@ -330,13 +365,10 @@ namespace GAPI {
 
             FormatDesc desc = formats[fmt];
             if (desc.bpp == 8) {
-    	      int n = origWidth * origHeight;
-	          uint16 *dst = (uint16 *)memory;
-	          uint8 *src = (uint8 *)data;
-	            while(n--) {
-		            uint8 c = *src++;
-		            *dst++ = LUMINANCE(c);
-	            }
+    	      //int n = origWidth * origHeight;
+	      uint8 *dst = (uint8 *)memory;
+	      uint8 *src = (uint8 *)data;
+	      twiddle(dst, src, origWidth, origHeight, 8);
             } else if (desc.bpp == 16) {
                 uint16 *dst = (uint16 *)memory;
                 uint16 *src = (uint16 *)data;
@@ -378,8 +410,6 @@ namespace GAPI {
             if (!this || (opt & OPT_PROXY)) return;
             ASSERT(memory);
 
-            curTile = NULL;
-
             FormatDesc desc = formats[fmt];
 	  
 	        if (opt & OPT_REPEAT) {
@@ -398,7 +428,11 @@ namespace GAPI {
 	        m_PvrContext.txr.height = height;
 	        m_PvrContext.txr.base = memory;
 	        m_PvrContext.txr.format = desc.textureFormat;
-	    }
+
+		if (width == 640) {
+		  m_PvrContext.txr.format |= PVR_TXRFMT_STRIDE;
+		}
+	}
 
         typedef struct {
     	    uint16 color[256 * 4];
@@ -406,35 +440,20 @@ namespace GAPI {
 	    } vqTex;
 
         void bindTileIndices(vqTex *tile) {
-            curTile = &tile->tile;
-
-            //ColorSW *pal = swPalette;
+	    uint16 *color = (uint16 *)tile;
             ColorSW *pal = swPaletteColor;
-            uint16 *color = (uint16 *)tile;
-
 	        for (int i = 0; i < 256; i++) {
-                #ifdef COLOR_16
-                uint16 rgb16 = pal[i];
-                #else
-                uint32 c = pal[i];
-                uint16 rgb16 = ((c>>16)&0x8000) | ((c>>9)&0x7c00) | ((c>>6)&0x3e0) | ((c>>3) & 0x1f);
-                #endif
-                color[i*4 + 0] = rgb16;
-                color[i*4 + 1] = rgb16;
-                color[i*4 + 2] = rgb16;
-                color[i*4 + 3] = rgb16;
+                uint16 argb1555 = pal[i];
+                color[i*4 + 0] = argb1555;
+                color[i*4 + 1] = argb1555;
+                color[i*4 + 2] = argb1555;
+                color[i*4 + 3] = argb1555;
             }
 
             m_PvrContext.txr.width = width * 4;
-	        m_PvrContext.txr.height = height;
-	        m_PvrContext.txr.base = (pvr_ptr_t)tile;
+	    m_PvrContext.txr.height = height;
+	    m_PvrContext.txr.base = (pvr_ptr_t)tile;
             m_PvrContext.txr.format = PVR_TXRFMT_ARGB1555 | PVR_TXRFMT_NONTWIDDLED | PVR_TXRFMT_VQ_ENABLE;
-
-            if (opt & OPT_NEAREST) {
-	            m_PvrContext.txr.filter = PVR_FILTER_NEAREST;
-	        } else {
-	            m_PvrContext.txr.filter = PVR_FILTER_BILINEAR;
-	        }
         }
 
         void unbind(int sampler) {}
@@ -477,7 +496,6 @@ namespace GAPI {
             if (indices) {
                 memcpy(iBuffer, indices, iCount * sizeof(indices[0]));
             }
-
             if (vertices) {
                 memcpy(vBuffer, vertices, vCount * sizeof(vertices[0]));
             }
@@ -493,20 +511,10 @@ namespace GAPI {
 
     int cullMode, blendMode;
 
-    ColorSW *swColor;
-    //DepthSW *swDepth;
-    short4  swClipRect;
-
-    struct VertexSW {
-        float x, y, z, w;
-        int32 u, v, l;
-    };
-
     void init() {
         LOG("Vendor   : %s\n", "SEGA");
         LOG("Renderer : %s\n", "PowerVR2DC");
         LOG("Version  : %s\n", "0.1");
-        //swDepth = NULL;
 
         support.texMinSize  = 8;
 
@@ -515,20 +523,14 @@ namespace GAPI {
         pvr_poly_cxt_txr(&m_PvrContext, PVR_LIST_OP_POLY, PVR_TXRFMT_ARGB1555, 8, 8, 0, 0);
 
         m_PvrContext.gen.specular = 1;
-        m_PvrContext.gen.fog_type = PVR_FOG_VERTEX;
-        #ifdef ENABLE_FOG
+	m_PvrContext.gen.fog_type = PVR_FOG_VERTEX;
+	#ifdef ENABLE_FOG
         FogParams = 0.0f;
+	PVR_SET(0x0B4, PVR_PACK_COLOR(0, 0, 0, 0));
         #endif
     }
 
-    void deinit() {
-        //delete[] swDepth;
-    }
-
-    void resize() {
-        //delete[] swDepth;
-        //swDepth = new DepthSW[Core::width * Core::height];
-    }
+    void deinit() {}
 
     inline mat4::ProjRange getProjRange() {
         return mat4::PROJ_ZERO_POS;
@@ -564,32 +566,21 @@ namespace GAPI {
 
     void waitVBlank() {}
 
-    void clear(bool color, bool depth) {
-        if (color) {
-            //memset(swColor, 0x00, Core::width * Core::height * sizeof(ColorSW));
-        }
-
-        if (depth) {
-            //memset(swDepth, 0xFF, Core::width * Core::height * sizeof(DepthSW));
-        }
-    }
+    void clear(bool color, bool depth) {}
 
     void setClearColor(const vec4 &color) {}
 
     void setViewport(const short4 &v) {
-        mat4 Matrix;
+       mat4 m;
 
-        Matrix.viewport((float)v.x, (float)v.y+v.w, (float)v.z, -(float)v.w, 0.0f, 1.0f);
-        //Matrix.viewport(0.0f, (float)Core::height, (float)Core::width, -(float)Core::height, 0.0f, 1.0f);
-   	    load_matrix(&Matrix.m);
-	    save_matrix(&m_Matrix[0].m);
+       m.viewport((float)v.x, (float)v.y+v.w, (float)v.z, -(float)v.w, 0.0f, 1.0f);
+       xmtrxLoadUnaligned((float*)&m);
+       xmtrxStoreUnaligned((float*)&ScreenView);
+
+      //xmtrxPrintLn();
     }
 
     void setScissor(const short4 &s) {
-        swClipRect.x = s.x;
-        swClipRect.y = Core::active.viewport.w - (s.y + s.w);
-        swClipRect.z = s.x + s.z;
-        swClipRect.w = Core::active.viewport.w - s.y;
     }
 
     void setDepthTest(bool enable) {
@@ -610,7 +601,6 @@ namespace GAPI {
     }
 
     void setCullMode(int rsMask) {
-
         cullMode = rsMask;
         switch (rsMask) {
             case RS_CULL_BACK  : CullMode = PVR_CULLING_CW;  break;
@@ -648,83 +638,94 @@ namespace GAPI {
 
     void setViewProj(const mat4 &mView, const mat4 &mProj) {
 
-        load_matrix(&mProj.m);
-        apply_matrix(&mView.m);
-        save_matrix(&m_Matrix[1].m);
+      xmtrxLoadUnaligned((float*)&mProj);
+      xmtrxMultiplyUnaligned((float*)&mView);
+      xmtrxStoreUnaligned((float*)&ViewProj);
     }
 
     void updateLights(vec4 *lightPos, vec4 *lightColor, int count) {
-        ambient = clamp(int32(active.material.y * 255), 0, 255);
 
-        lightsCount = 0;
-        for (int i = 0; i < count; i++) {
-            if (lightColor[i].w >= 1.0f) {
-                continue;
-            }
-            LightSW &light = lights[lightsCount++];
-            vec4 &c = lightColor[i];
-            light.intensity = uint32(((c.x + c.y + c.z) / 3.0f) * 255.0f);
-            light.pos    = lightPos[i].xyz();
-            light.radius = lightColor[i].w;
-        }
+      ambient = vec3(Core::active.material.y);
+      //ambient = Core::active.material.xyz();
+
+      lightsCount = 0;
+      for (int i = 0; i < count; i++) {
+	if (lightColor[i].w >= 1.0f) {
+	  continue;
+	}
+	LightPVR &light = lights[lightsCount++];
+	light.intensity = lightColor[i].xyz();
+	light.pos   = lightPos[i].xyz();
+	light.att   = lightColor[i].w * lightColor[i].w;
+      }
     }
 
     void setFog(const vec4 &params) {
         #ifdef ENABLE_FOG
         FogParams = params.w;
 
+	uint32 fogColor = 0x00000000;
         if (params.w > 0.0f) {
-            uint32 fogColor = 0x00000000
-                | (uint32(clamp(params.z * 255.0f, 0.0f, 255.0f)) << 0)
+	        fogColor = 0x00000000
+                | (uint32(clamp(params.x * 255.0f, 0.0f, 255.0f)) << 0)
                 | (uint32(clamp(params.y * 255.0f, 0.0f, 255.0f)) << 8)
-                | (uint32(clamp(params.x * 255.0f, 0.0f, 255.0f)) << 16);
-            PVR_SET(0x0B4, fogColor);
-
-        } else {
-            //PVR_FSET(0x0B4, PVR_PACK_COLOR(0, 0.5, 0.9, 0.9));
-            PVR_SET(0x0B4, 0);
+                | (uint32(clamp(params.z * 255.0f, 0.0f, 255.0f)) << 16);
+		//PVR_SET(0x0B4, fogColor);
         }
         #endif
     }
 
-    void applyLighting(VertexSW &result, const Vertex &vertex, float depth) {
-        vec3 coord  = vec3(float(vertex.coord.x), float(vertex.coord.y), float(vertex.coord.z));
-        vec3 normal = vec3(float(vertex.normal.x), float(vertex.normal.y), float(vertex.normal.z)).normal();
-        float lighting = 0.0f;
-        for (int i = 0; i < lightsCount; i++) {
-            LightSW &light = lightsRel[i];
-            vec3 dir = (light.pos - coord) * light.radius;
-            float att = dir.length2();
-            float lum = normal.dot(dir / sqrtf(att));
-            lighting += (max(0.0f, lum) * max(0.0f, 1.0f - att)) * light.intensity;
-        }
+    uint32 applyLighting(const Vertex &vertex, ubyte4 argb) {
+      //ubyte4 argb = vertex.color;
+      vec3 result = vec3(0.0f);
+      uint32 R, G, B, A;
 
-        lighting += result.l;
+      vec3 coord  = vec3(float(vertex.coord.x), float(vertex.coord.y), float(vertex.coord.z));
+      vec3 normal = vec3(float(vertex.normal.x), float(vertex.normal.y), float(vertex.normal.z));
+      vec3f_normalize(normal.x, normal.y, normal.z);
 
-        #ifndef ENABLE_FOG
-        depth -= SW_FOG_START;
-        if (depth > 0.0f) {
-            lighting *= clamp(1.0f - depth / (SW_MAX_DIST - SW_FOG_START), 0.0f, 1.0f);
-        }
-        #endif
+      for (int i = 0; i < lightsCount; i++) {
+	LightPVR &light = lights[i];
+	vec3 color = light.intensity;
 
-        result.l = (255 - min(255, int32(lighting)));
+	vec3 L = light.pos - coord;
+	vec3f_normalize(L.x, L.y, L.z);
+	
+	float D;
+	vec3 dis = light.pos - coord;
+	vec3f_length(dis.x, dis.y, dis.z, D);
+
+	// I = 1 / kc + kl + kq
+	// kc = 1.0
+	// kl = 0.0
+	// kq = quadratic * d^2
+	//float att = 1.0f / (1.0f + light.att * SQRT(D));
+	float att = (1.0f + light.att * SQRT(D));
+	att = INVERT(att);
+
+	float LdotN;
+	vec3f_dot(normal.x, normal.y, normal.z, L.x, L.y, L.z, LdotN);
+
+	float strength = max(0.0f, LdotN);
+	vec3 amb = ambient;
+
+	vec3 diffuse = color * strength;
+	diffuse *= att;
+	amb *= att;
+	result += (amb + diffuse);
+      }
+
+      R = clamp(int(result.x * argb.x), 0, 255);
+      G = clamp(int(result.y * argb.y), 0, 255);
+      B = clamp(int(result.z * argb.z), 0, 255);
+      A = argb.w;
+
+      return ARGB8888( R, G, B, A);
     }
 
     void transform(const Index *indices, const Vertex *vertices, int iStart, int iCount, int vStart) {
 
-        #if 0
-        mat4 swMatrix;
-        swMatrix.viewport(0.0f, (float)Core::height, (float)Core::width, -(float)Core::height, 0.0f, 1.0f);
-        swMatrix = swMatrix * mViewProj * mModel;
-
-        load_matrix(&swMatrix.m);
-        #else
-        load_matrix(&m_Matrix[0].m);
-        apply_matrix(&m_Matrix[1].m);
-        apply_matrix(&mModel.m);
-
-        #define vec4f_ftrv(x, y, z, w) { \
+	#define vec4f_ftrv(x, y, z, w) {       \
         register float __x __asm__("fr0") = x; \
         register float __y __asm__("fr1") = y; \
         register float __z __asm__("fr2") = z; \
@@ -740,261 +741,167 @@ namespace GAPI {
                             : ); \
         x = __x; y = __y; z = __z; w = __w; \
         }
-        #endif
 
-        const bool colored = vertices[vStart + indices[iStart]].color.w == 142;
+	polygon_vertex_t vertex_buffer[6] __attribute__((aligned(32)));
 
-        if (colored) {
-            curTile = (Tile8*)swGradient;
-        }
+	pvr_context dst;
 
-        if (colored) {
-            m_PvrContext.txr.enable = PVR_TEXTURE_DISABLE;
-        } else {
-            m_PvrContext.txr.enable = PVR_TEXTURE_ENABLE;
-        }
+	pvr_poly_hdr_t hdr;
+	ReCompileHeader(&hdr);
 
-        pvr_poly_hdr_t hdr;
-        ReCompileHeader(&hdr);
-        primitive_header((void *)&hdr, 32);
+	pc_copy((const pvr_context *)&hdr, &dst);
 
-        int vIndex = 0;
-        bool isTriangle = false;
-        int vcount = 0;
-        polygon_vertex_t vertex_buffer[4] __attribute__((aligned(32)));
+        //int vIndex = 0;
+        //bool isTriangle = false;
+        //int vcount = 0;
+	//Index index[4];
+	Vertex vertex[6];
+	int face_list[7];
 
-        for (int i = 0; i < iCount; i++) {
-            const Index  index   = indices[iStart + i];
-            const Vertex &vertex = vertices[vStart + index];
+        for (int i = 0; i < iCount;) {
+	  
+	  Index index[6];
+	  int vcount = 0;
 
-            vIndex++;
+	  index[0]   = indices[iStart + i + 0];
+	  index[1]   = indices[iStart + i + 1];
+	  index[2]   = indices[iStart + i + 2];
+	  vertex[0] = vertices[vStart + index[0]];
+	  vertex[1] = vertices[vStart + index[1]];
+	  vertex[2] = vertices[vStart + index[2]];
 
-            if (vIndex == 1) {
-                isTriangle = vertex.normal.w == 1;
-            } else {
-                if (vIndex == 4) { // loader splits quads to two triangles with indices 012[02]3, we ignore [02] to make it quad again!
-                    vIndex++;
-                    i++;
-                    continue;
-                }
-            }
+	  bool colored = false;
 
-            vec4 c;
-            #if 0
-            c = swMatrix * vec4(vertex.coord.x, vertex.coord.y, vertex.coord.z, 1.0f);
-            #else
-            //c.x = vertex.coord.x;
-            //c.y = vertex.coord.y;
-            //c.w = vertex.coord.z;
-            c = vec4(vertex.coord.x, vertex.coord.y, vertex.coord.z, 1.0f);
-            vec4f_ftrv(c.x, c.y, c.z, c.w);
-            #endif
+	  bool isTriangle = vertex[0].normal.w == 1;
 
-            #if 0
-            if (/*c.w < 0.0f ||*/ c.w > SW_MAX_DIST) { // skip primitive
-                if (isTriangle) {
-                    i += 3 - vIndex;
-                } else {
-                    i += 6 - vIndex;
-                }
-                vIndex = 0;
+	  if (isTriangle) {
+	    face_list[0] = 3;
+	    face_list[1] = 0;
+	    face_list[2] = 1;
+	    face_list[3] = 2;
+	    i += 3;
 
-                vcount = 0;
-                continue;
-            }
-            #endif
+	    vcount = 3;
+	    colored = vertex[1].texCoord.y == 0;
+	  } else {
 
-            VertexSW result;
+	    index[3]   = indices[iStart + i + 5];
+	    vertex[3] = vertices[vStart + index[3]];
 
-            #if 0
-            mat_trans_single3_nomod(vertex.coord.x, vertex.coord.y, vertex.coord.z, result.x, result.y, result.z);
-            #else
-            /*
-            c.z = 1 / c.w
+	    i += 6;
+	    vcount = 4;
+	    
+	    face_list[0] = 4;
+	    face_list[1] = 0;
+	    face_list[2] = 1;
+	    face_list[3] = 3;
+	    face_list[4] = 2;
 
-            result.x = c.x * c.z;
-            result.y = c.y * c.z;
-            result.z = c.z * c.z;
-            */
+	    colored = vertex[3].texCoord.y == 0;
+	  }
 
-            result.x = c.x;
-            result.y = c.y;
-            result.z = c.z;
-            
-            #endif
+	  if(colored) {
+	    pc_set_textured(&dst, 0);
+	  } else {
+	    pc_set_textured(&dst, 1);
+	  }
 
-            if (colored) {
-                result.u = vertex.color.x;
-                result.v = 0;
-            } else {
-                result.u = vertex.texCoord.x;
-                result.v = vertex.texCoord.y;
-            }
 
-            result.l = ((vertex.light.x * ambient) >> 8);
+	  primitive_header((void *)&dst, 32);
 
-            applyLighting(result, vertex, c.w);
+	  unsigned int argb, oargb;
+	  packed_color_t tmp;
+	  
+	  for (int i=0; i<vcount; i++) {
 
-            uint32 u = uint32(result.u);
-            uint32 v = uint32(result.v);
+	    vec4 c;
+	    #if 0
+	    mat_trans_single3_nomod(vertex[i].coord.x, vertex[i].coord.y, vertex[i].coord.z, c.x, c.y, c.z);
+	    #else
+	    c = vec4(vertex[i].coord.x, vertex[i].coord.y, vertex[i].coord.z, 1.0f);
+	    vec4f_ftrv(c.x, c.y, c.z, c.w);
+	    #endif
 
-            uint8 tIndex;
+	    //xmtrxPush();
+	    //xmtrxIdentity();
+	    //xmtrxScale(INV_SHORT_HALF, INV_SHORT_HALF, 1.0);
+	    vec2 uv = vec2(vertex[i].texCoord.x * INV_SHORT_HALF, vertex[i].texCoord.y * INV_SHORT_HALF);
+	    //vec2 uv = vec2(vertex[i].texCoord.x, vertex[i].texCoord.y);
+	    //mat_trans_2d_single(uv.x, uv.y);
 
-            if(curTile) {
-                tIndex = curTile->index[(v << 8) + u];
-            } else {
-                tIndex = 0;
-            }
+	    //xmtrxPop();
 
-            uint32 argb, oargb;
-            packed_color_t tmp;
+	    ubyte4 color;
+	    
+	    if(colored) {
+	      color = vertex[i].color;
+	    } else {
+	      color = vertex[i].light;
+	    }
 
-            int32 k = result.l;
-            float lv = float(255 - k); // lighting value in untextured colour
-            oargb = 0;
+	    if (PaletteFlag == PaletteWater) {
+	      color.x = (uint32(color.x) * 150) >> 8;
+	      color.y = (uint32(color.y) * 230) >> 8;
+	      color.z = (uint32(color.z) * 230) >> 8;
+	    }
 
-            #ifdef ENABLE_FOG
+	    if (lightsCount) {
+	      argb = applyLighting(vertex[i], color);
+	    } else {
+	      if(c.z == 1.0f) {
+		color = vertex[i].light;
+	      }
+	      argb = ARGB8888(color.x, color.y, color.z, color.w);
+	    }
+
+#ifdef ENABLE_FOG
             if (FogParams > 0.0f) {
-                float depth = c.w;
+	      float depth = c.w;
+	      
+	      float alpha = clamp(depth * FogParams, 0.0f, 1.0f);
+	      oargb = int(alpha * 255) << 24;
+            } else
+#endif
+	    oargb = 0;
 
-                uint8 fog_a;
-                float alpha = clamp(depth * FogParams, 0.0f, 1.0f);
-                fog_a = alpha * 255;
-                oargb = fog_a << 24;
-            }
-            #endif
+	    vertex_buffer[i].x = c.x;
+	    vertex_buffer[i].y = c.y;
+	    vertex_buffer[i].z = c.z;
+	    vertex_buffer[i].u = uv.x;
+	    vertex_buffer[i].v = uv.y;
+	    
+	    vertex_buffer[i].base.color = argb;
+	    vertex_buffer[i].offset.color = oargb;
 
-            if (colored) {
-                if (tIndex != 0) {
-                    #ifdef COLOR_16
-                    ColorSW c = swPalette[tIndex];
-                    argb = ( ((c&0x8000)?(0xff<<24):0) | ((c&0x7c00)<<9) | ((c&0x3e0)<<6) | ((c& 0x1f)<<3) );
-                    #else
-                    tmp.color = swPalette[tIndex];
-                    #endif
-                    //swDepth[x] = z;
-
-                    float R,G,B;
-                    R = float(tmp.argb[2]) * 1 / 255.0f;
-                    G = float(tmp.argb[1]) * 1 / 255.0f;
-                    B = float(tmp.argb[0]) * 1 / 255.0f;
-                    #if 0
-                    tmp.argb[2] = R * lv * 255.0f;
-                    tmp.argb[1] = G * lv * 255.0f;
-                    tmp.argb[0] = B * lv * 255.0f;
-                    #else
-                    tmp.argb[2] = R * lv;
-                    tmp.argb[1] = G * lv;
-                    tmp.argb[0] = B * lv;
-                    #endif
-
-                    argb = tmp.color;
-                    
-                } else {
-                    argb = ARGB8888(vertex.light.x,vertex.light.y,vertex.light.z,vertex.light.w);
-                }    
-            } else {
-                if (tIndex != 0) {
-                    if (swPalette == swPaletteWater) {
-                        argb = swPaletteLight[k + 256];
-                    } else {
-                        argb = swPaletteLight[k];
-                    }
-                    #ifdef COLOR_16
-                    argb = ( ((c&0x8000)?(0xff<<24):0) | ((c&0x7c00)<<9) | ((c&0x3e0)<<6) | ((c& 0x1f)<<3) );
-                    #endif
-                } else {
-                    argb = ARGB8888(vertex.light.x,vertex.light.y,vertex.light.z,vertex.light.w);
-                }
-
-                if(!curTile) {
-                    u = uint32(result.u) * 1 / 32767.0f * 255;
-                    v = uint32(result.v) * 1 / 32767.0f * 255;
-                }
-            }
-
-
-            vertex_buffer[vcount].x = result.x;
-            vertex_buffer[vcount].y = result.y;
-            vertex_buffer[vcount].z = result.z;
-            vertex_buffer[vcount].u = u * 1 / 255.0f;
-            vertex_buffer[vcount].v = v * 1 / 255.0f;
-            vertex_buffer[vcount].base.color = argb;
-            vertex_buffer[vcount].offset.color = oargb;
-
-            vcount++;
-
-            if (isTriangle && vIndex == 3) {
-                int face_list[] = {0, 1, 2};
-    	        primitive_nclip_polygon((pvr_vertex_t*)vertex_buffer, face_list, sizeof(face_list)/sizeof(int));
-                vcount = 0;
-
-                vIndex = 0;
-            } else if (vIndex == 6) {
-                int face_list[] = {4, 1, 2, 0, 3};
-                primitive_nclip_polygon_strip((pvr_vertex_t*)vertex_buffer, face_list, sizeof(face_list)/sizeof(int));
-                vcount = 0;
-
-                vIndex = 0;
-            }
-        }
-
-    }
-
-    void transformLights() {
-        memcpy(lightsRel, lights, sizeof(LightSW) * lightsCount);
-
-        mat4 mModelInv = mModel.inverseOrtho();
-        for (int i = 0; i < lightsCount; i++) {
-            lightsRel[i].pos = mModelInv * lights[i].pos;
+	  }
+	  vcount++; // skip primitive size
+	  primitive_nclip_polygon_strip(vertex_buffer, face_list, vcount);
         }
     }
 
     void DIP(Mesh *mesh, const MeshRange &range) {
-        if (curTile == NULL) {
-            //uint16 *tex = (uint16*)Core::active.textures[0]->memory; // TODO
-            //return;
-        }
 
-        transformLights();
-
-        Tile8 *oldTile = curTile;
-
-        transform(mesh->iBuffer, mesh->vBuffer, range.iStart, range.iCount, range.vStart);
-
-        curTile = oldTile;
+      xmtrxLoadUnaligned((float*)&ScreenView);
+      xmtrxMultiplyUnaligned((float*)&ViewProj);
+      xmtrxMultiplyUnaligned((float*)&mModel);
+      
+      transform(mesh->iBuffer, mesh->vBuffer, range.iStart, range.iCount, range.vStart);
     }
 
     void initPalette(Color24 *palette, uint8 *lightmap) {
         for (uint32 i = 0; i < 256; i++) {
             const Color24 &p = palette[i];
-            swPaletteColor[i] = CONV_COLOR(p.r, p.g, p.b);
-            swPaletteWater[i] = CONV_COLOR((uint32(p.r) * 150) >> 8, (uint32(p.g) * 230) >> 8, (uint32(p.b) * 230) >> 8);
-            swPaletteGray[i]  = CONV_COLOR((i * 57) >> 8, (i * 29) >> 8, (i * 112) >> 8);
-            swGradient[i]     = i;
-
             if ( i == 0 ) {
               swPaletteColor[i] = 0;
-              swPaletteWater[i] = 0;
-              swPaletteGray[i]  = 0;
-              //swGradient[i]     = 0;
+              continue;
             }
-        }
-        swPalette  = swPaletteColor;
 
-        for (uint32 i = 0; i < 256; i++) {
-            uint8 L = clamp(int(255 - i), 0, 255);
-
-            swPaletteLight[i] = CONV_COLOR(L, L, L);
-            swPaletteLight[i + 256] = CONV_COLOR((uint32(L) * 150) >> 8, (uint32(L) * 230) >> 8, (uint32(L) * 230) >> 8);
+            swPaletteColor[i] = CONV_COLOR(p.r, p.g, p.b);
         }
     }
 
-    void setPalette(ColorSW *palette) {
-        swPalette = palette;
-    }
-
-    void setShading(bool enabled) {
+    void setPalette(int flag) {
+	PaletteFlag = flag;
     }
 
     vec4 copyPixel(int x, int y) {

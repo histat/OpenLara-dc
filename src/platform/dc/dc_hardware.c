@@ -1,66 +1,52 @@
 #include <stdio.h>
 #include <string.h>
 
+#include <sys/dirent.h>
+
+#include <kos.h>
 #include "private.h"
 
 #include "libsh4.h"
 #include "primitive/primitive.h"
 #include "libpspvram/valloc.h"
+#include "xmtrx.h"
+#include "watchdog.h"
 #include "pvr_cxt.h"
 #include "npvr_vertex.h"
-#include <ronin/ronin.h>
-#include <ronin/gddrive.h>
-#include <ronin/soundcommon.h>
+#include <../hardware/pvr/pvr_internal.h>
 #include "banner_data.h"
+
+extern void _audio_init();
+extern void _audio_free();
+
+static pvr_ptr_t pvr_mem_base;
 
 extern void LaunchMenu();
 
-#ifdef NOSERIAL
-void dcExit()
+
+
+void *kospvrvramGetAddr()
 {
-  (*(void(**)(int))0x8c0000e0)(0);
-}
-#endif
-
-void pvr_set_bg_color(float r, float g, float b) {
-    int ir, ig, ib;
-    unsigned int color;
-
-    ir = (int)(255 * r);
-    ig = (int)(255 * g);
-    ib = (int)(255 * b);
-
-    color = (ir << 16) | (ig << 8) | (ib << 0);
-
-    ta_bg_list.color1 = color; 
-    ta_bg_list.color2 = color;
-    ta_bg_list.color3 = color;
-
-#ifndef NOSERIAL
-    printf("[%s] color =0x%x\n", __func__, color);
-#endif
+  return (void *)pvr_mem_base;
 }
 
-pvr_ptr_t pvr_mem_malloc(size_t size)
+pvr_ptr_t kos_mem_malloc(size_t size)
 {
   void *ret = psp_valloc(size);
 
-#ifndef NOSERIAL
   printf("[%s] tex = %p size 0x%x\n", __func__, ret, size);
-#endif
-  return (pvr_ptr_t)ret;
+
+  return (pvr_ptr_t)(ret);
 }
 
-void pvr_mem_free(pvr_ptr_t chunk)
+void kos_mem_free(pvr_ptr_t chunk)
 {
-#ifndef NOSERIAL
   printf("[%s] tex = %p\n", __func__, chunk);
-#endif
   
   psp_vfree(chunk);
 }
 
-void pvr_poly_compile(pvr_poly_hdr_t *dst, pvr_poly_cxt_t *src)
+void kos_poly_compile(pvr_poly_hdr_t *dst, pvr_poly_cxt_t *src)
 {
   int u,v;
   pc_boolean vq, twid;
@@ -101,7 +87,7 @@ void pvr_poly_compile(pvr_poly_hdr_t *dst, pvr_poly_cxt_t *src)
   cxt->bf.a = cxt->bf.r = cxt->bf.g = cxt->bf.b = 1;
   
   if(src->txr.enable == PVR_TEXTURE_ENABLE)
-    {
+  {
       u = pc_convert_size(src->txr.width);
       v = pc_convert_size(src->txr.height);
       vq = (src->txr.format>>30)&0x1;
@@ -119,285 +105,147 @@ void pvr_poly_compile(pvr_poly_hdr_t *dst, pvr_poly_cxt_t *src)
       pc_set_mipmap_bias(cxt, src->txr.mipmap_bias);
       
       if (format == 5) {
-	      pc_set_palette_4bit(cxt, (src->txr.format>>21)&0x3f);
+	pc_set_palette_4bit(cxt, (src->txr.format>>21)&0x3f);
       } else if (format == 6) {
-	      pc_set_palette_8bit(cxt, (src->txr.format>>25)&0x03);
+	pc_set_palette_8bit(cxt, (src->txr.format>>25)&0x03);
       }
     }
 }
 
-void pvr_poly_cxt_txr(pvr_poly_cxt_t *dst, pvr_list_t list,
-                      int textureformat, int tw, int th, pvr_ptr_t textureaddr,
-                      int filtering) {
-    int alpha;
+int  arch_auto_init() {
+    /* Initialize memory management */
+    mm_init();
 
-    /* Start off blank */
-    memset(dst, 0, sizeof(pvr_poly_cxt_t));
+    /* Do this immediately so we can receive exceptions for init code
+       and use ints for dbgio receive. */
+    irq_init();         /* IRQs */
+    irq_disable();          /* Turn on exceptions */
 
-    /* Fill in a few values */
-    dst->list_type = list;
-    alpha = list > PVR_LIST_OP_MOD;
-    dst->fmt.color = PVR_CLRFMT_ARGBPACKED;
-    dst->fmt.uv = PVR_UVFMT_32BIT;
-    dst->gen.shading = PVR_SHADE_GOURAUD;
-    dst->depth.comparison = PVR_DEPTHCMP_GREATER;
-    dst->depth.write = PVR_DEPTHWRITE_ENABLE;
-    dst->gen.culling = PVR_CULLING_CCW;
-    dst->txr.enable = PVR_TEXTURE_ENABLE;
+    if(!(__kos_init_flags & INIT_NO_DCLOAD))
+        fs_dcload_init_console();   /* Init dc-load console, if applicable */
 
-    if(!alpha) {
-        dst->gen.alpha = PVR_ALPHA_DISABLE;
-        dst->txr.alpha = PVR_TXRALPHA_ENABLE;
-        dst->blend.src = PVR_BLEND_ONE;
-        dst->blend.dst = PVR_BLEND_ZERO;
-        dst->txr.env = PVR_TXRENV_MODULATE;
-    }
-    else {
-        dst->gen.alpha = PVR_ALPHA_ENABLE;
-        dst->txr.alpha = PVR_TXRALPHA_ENABLE;
-        dst->blend.src = PVR_BLEND_SRCALPHA;
-        dst->blend.dst = PVR_BLEND_INVSRCALPHA;
-        dst->txr.env = PVR_TXRENV_MODULATEALPHA;
-    }
+    /* Init SCIF for debug stuff (maybe) */
+    scif_init();
 
-    dst->blend.src_enable = PVR_BLEND_DISABLE;
-    dst->blend.dst_enable = PVR_BLEND_DISABLE;
-    dst->gen.fog_type = PVR_FOG_DISABLE;
-    dst->gen.color_clamp = PVR_CLRCLAMP_DISABLE;
-    dst->txr.uv_flip = PVR_UVFLIP_NONE;
-    dst->txr.uv_clamp = PVR_UVCLAMP_NONE;
-    dst->txr.filter = filtering;
-    dst->txr.mipmap_bias = PVR_MIPBIAS_NORMAL;
-    dst->txr.width = tw;
-    dst->txr.height = th;
-    dst->txr.base = textureaddr;
-    dst->txr.format = textureformat;
-}
+    /* Init debug IO */
+    dbgio_init();
 
-#define TA_SQ_ADDR (unsigned int *)(void *) \
-    (0xe0000000 | (((unsigned long)0x10000000) & 0x03ffffe0))
+    /* Print a banner */
+    if(__kos_init_flags & INIT_QUIET)
+        dbgio_disable();
 
-int pvr_list_begin(pvr_list_t list)
-{
-  pvr_poly_hdr_t poly =
-    {
-      (4 << 29)        /* Polygon */
-      | (list << 24)  /* List */
-      | (1 << 23)  /*  */
-      | (1 << 18)  /* Strip Length */
-      | (0 << 7)   /* Modifier enable */
-      | (0 << 3)   /* Texture */
-      | (0 << 2)   /* Offset color */
-      | (0 << 1),  /* Gouraud Shading */
-      (7 << 29)        /* Z sort */
-      | (0 << 27)  /* CCW culling */
-      | (0 << 20), /* MIPMAP */
-      (32 << 24)       /* Blend Mode */
-      | (2 << 22)  /* Fog */
-      | (0 << 19)  /* Alpha */
-      | (0 << 17)  /* UV flip */
-      | (0 << 15)  /* UV clamp */
-      | (0 << 13)  /* BiLinear Filter */
-      | (0 << 8)   /* MIPMAP scale */
-      | (0 << 6)   /* Shading mode */
-      | (0 << 3)   /* Texture U size */
-      | (0 << 0),  /* Texture V size */
-      (0 << 31)        /* MIPMAP */
-      | (0 << 30)  /* VQ*/
-      | (0 << 27)  /* RGB565 */
-      | (0 << 26)  /* Twiddled */
-      | (0),
-      0, 0, 0, 0};
-  
-  sqCopy32(TA_SQ_ADDR, &poly);
-  return 0;
-}
+    timer_init();           /* Timers */
+    hardware_sys_init();        /* DC low-level hardware init */
 
-int pvr_list_finish() {
+    /* Initialize our timer */
+    timer_ms_enable();
+    rtc_init();
 
-  unsigned int cmd[8] = { 0 };
-  
-  sqCopy32(TA_SQ_ADDR, &cmd);
-  return 0;
-}
+    /* Threads */
+    if(__kos_init_flags & INIT_THD_PREEMPT)
+        thd_init(THD_MODE_PREEMPT);
+    else
+        thd_init(THD_MODE_COOP);
 
-int gettimeofday (struct timeval *tv, void *tz)
-{
-  static unsigned long last_tm = 0;
-  static unsigned long tmhi = 0;
-  unsigned long tmlo = Timer();
-  if (tmlo < last_tm)
-    tmhi++;
+    nmmgr_init();
 
-  unsigned long long usecs = 
-    ((((unsigned long long)tmlo)<<11)|
-     (((unsigned long long)tmhi)<<43))/100;
+    fs_init();          /* VFS */
+    //fs_ramdisk_init();      /* Ramdisk */
+    //fs_romdisk_init();      /* Romdisk */
 
-  tv->tv_usec = usecs % 1000000;
-  tv->tv_sec = usecs / 1000000;
+    hardware_periph_init();     /* DC peripheral init */
 
-  last_tm = tmlo;
-  return 0;
-}
-
-
-static unsigned int read_belong(unsigned int *l)
-{
-  unsigned int v = *l;
-  return sh4ByteSwap(v);
-}
-
-static void write_belong(unsigned int *l, unsigned int v)
-{
-  *l = sh4ByteSwap(v);
-}
-
-int rumble_check_unit(int unit, struct rumbinfo *info)
-{
-  unsigned int func;
-  unsigned char *res;
-
-  info->port = unit/6;
-  info->dev = unit - info->port*6;
-
-  if(info->port<0 || info->port>3 || info->dev<0 || info->dev>5)
-    return 0;
-
-  if(info->dev != 1)
-    return 0;
-
-  //FIXME: Timer problem if docmd was done somewhere else within 15000s?
-  res = maple_docmd(info->port, info->dev, MAPLE_COMMAND_DEVINFO, 0, NULL);
-
-  if(res && res[0] == MAPLE_RESPONSE_DEVINFO && res[3]>=28 &&
-     ((func=read_belong((unsigned int *)(res+4)))&MAPLE_FUNC_PURUPURU)) {
-    info->func = func;
-  }
-
-  return 0;
-}
-
-int rumble_set(struct rumbinfo *info, int on)
-{
-  unsigned int param[2];
-  unsigned char *res;
-  int retr;
-
-  if(!(info->func & MAPLE_FUNC_PURUPURU))
-    return 0;
-
-  for(retr = 0; retr < 5; retr++) {
-
-    write_belong(&param[0], MAPLE_FUNC_PURUPURU);
-    write_belong(&param[1], (on? 0x011a7010 : 0));
-
-    if((res = maple_docmd(info->port, info->dev, MAPLE_COMMAND_SETCOND, 2,
-                          param))
-       && res[0] == MAPLE_RESPONSE_OK)
-      return 1;
-  }
-
-  return 0;
-}
-
-void g2_memcpy4s(void *s1, const void *s2, unsigned int n)
-{
-  uint32 *p1a = s1;
-  uint32 *p1b = (void*)(((char *)s1)+SAMPLES_TO_BYTES(STEREO_OFFSET));
-  const uint32 *p2 = s2;
-  n+=3;
-  n>>=2;
-  while(n--) {
-    uint32 a = *p2++;
-    uint32 b = *p2++;
-    *p1a++ = (a & 0xffff) | ((b & 0xffff)<<16);
-    *p1b++ = ((a & 0xffff0000)>>16) | (b & 0xffff0000);
-
-    if(!(n & 3)) {
-      uint32 i = 0x1800;
-      // aica FIFO
-      for (; i >=0; --i)
-          if(!(*(volatile uint32*)0xa05f688c & 0x11)) break;
+    if(!(__kos_init_flags & INIT_NO_DCLOAD) && *DCLOADMAGICADDR == DCLOADMAGICVALUE) {
+        dbglog(DBG_INFO, "dc-load console support enabled\n");
+        fs_dcload_init();
     }
 
-  }
+    fs_iso9660_init();
+
+    vmufs_init();
+    //fs_vmu_init();
+
+    /* Now comes the optional stuff */
+    if(__kos_init_flags & INIT_IRQ) {
+        irq_enable();       /* Turn on IRQs */
+        maple_wait_scan();  /* Wait for the maple scan to complete */
+    }
+
+
+    return 0;
 }
 
+void  arch_auto_shutdown() {
+    fs_dclsocket_shutdown();
 
-
-#define TA_LIST_ENABLE_DEFAULT (TA_LIST_OPAQUEPOLY|TA_LIST_TRANSPOLY|TA_LIST_PUNCHTHROUGH)
-//#define TA_LIST_ENABLE_DEFAULT (TA_LIST_OPAQUEPOLY|TA_LIST_OPAQUEMOD|TA_LIST_TRANSPOLY)
-//#define TA_LIST_ENABLE_DEFAULT (TA_LIST_OPAQUEPOLY|TA_LIST_TRANSPOLY)
-//#define TA_LIST_ENABLE_DEFAULT (TA_LIST_OPAQUEPOLY|TA_LIST_OPAQUEMOD|TA_LIST_TRANSPOLY|TA_LIST_TRANSMOD)
-
-static void dc_reset_target()
-{
-  int i;
-  union {
-    float f;
-    unsigned int i;
-  } zclip;
-  
-  for(i=0; i<2; i++) {
-    struct ta_buffers *b = &ta_buffers[i];
-#ifdef USE_AA
-    b->ta_tilew = (640*2)/32;
-#endif
-    b->ta_lists = TA_LIST_ENABLE_DEFAULT;
-  }
-  
-  ta_init_renderstate();
-
+    irq_disable();
+    timer_shutdown();
+    hardware_shutdown();
+    pvr_shutdown();
+    //library_shutdown();
+    fs_dcload_shutdown();
+    //fs_vmu_shutdown();
+    vmufs_shutdown();
+    fs_iso9660_shutdown();
+    //fs_ramdisk_shutdown();
+    //fs_romdisk_shutdown();
+    fs_shutdown();
+    thd_shutdown();
+    rtc_shutdown();
 }
 
 /* Primitive buffer */
 unsigned int prim_buffer[256 * 1024 * 4] __attribute__((aligned(32)));
 
+xMatrix mtrx_stack[4];
 
 void dc_init_hardware()
 {
-#ifndef NOSERIAL
-  serial_init(57600);
-  usleep(20000);
-  printf("Serial OK\n");
-#endif
+  int n;
+
+  pvr_init_params_t pvr_params = {
+    { PVR_BINSIZE_16, PVR_BINSIZE_0, PVR_BINSIZE_16, PVR_BINSIZE_0, PVR_BINSIZE_16 },
+    (int)(512 * 1024),
+    0,	//dma
+    0,	//fsaa
+    0	//autosort disable
+  };
+
+  wdInit();
+
+  xmtrxSetStackPointer(mtrx_stack, sizeof(mtrx_stack));
+
+  _audio_init();
+
+  pvr_mem_base = NULL;
+
+
+  pvr_init (&pvr_params);
   
-  cdfs_init();
-  maple_init();
-  dc_setup_ta();
-  init_arm();
-
-  sh4SetFPSCR(0x00040001);
+  pvr_mem_base = (pvr_ptr_t)(PVR_RAM_INT_BASE + pvr_state.texture_base);
+  //pvr_mem_base = 0xa4000000;
+  printf("reset pvr_mem_base at 0x%4x ", pvr_mem_base);
   
-#ifdef USE_AA
-  if (fb_devconfig.dc_wid == 640) {
-    *(volatile unsigned int *)(0xa05f80f4) = 0x10400;
-  }
-  else {
-    *(volatile unsigned int *)(0xa05f80f4) = 0x10401;
-  }
-#endif
-
-  dc_reset_target();
-
+  pvr_set_zclip(0.0f);
+  
   pvr_set_bg_color(0.0, 0.0, 0.0);
 
-  PVR_FSET(PVR_SMALL_CULL, 0.1f);
+  //PVR_FSET(PVR_SMALL_CULL, 0.1f);
 
-  PVR_FSET(0x11C, 0.5f);
-  //PVR_FSET(0x108, PVR_PAL_ARGB4444);
+  //PVR_FSET(0x11C, 0.5f);
+  PVR_SET(0x0e4, (640 >> 5));
 
-  /* Init primitive buffer */
+  for (n = 0; n < 256; n++) {
+    pvr_set_pal_entry(n, (n*0x111)|0xff000000);
+  }
+
+ /* Init primitive buffer */
   primitive_buffer_init(0, 0, -1);
-  //primitive_buffer_init(1, &prim_buffer[256 * 1024 * 0], 256 * 1024);
-  primitive_buffer_init(2, &prim_buffer[256 * 1024 * 0], 256 * 1024 * 1);
-  //primitive_buffer_init(2, &prim_buffer[256 * 1024 * 0], 256 * 1024 * 4);
-  //primitive_buffer_init(3, &prim_buffer[256 * 1024 * 2], 256 * 1024);
-  primitive_buffer_init(4, &prim_buffer[256 * 1024 * 2], 256 * 1024 * 3);
+  primitive_buffer_init(2, &prim_buffer[256 * 1024 * 0], 256 * 1024 * 2);
+  primitive_buffer_init(4, &prim_buffer[256 * 1024 * 1], 256 * 1024 * 2);
 
-
+  wdPause();
   LaunchMenu();
-
 }
 
 extern void *get_romfont_address();
@@ -414,7 +262,7 @@ _get_romfont_address:	\n\
 			\n\
 ");
 
-void bfont_draw(void *buffer, int bufwidth, int opaque, int c)
+void _bfont_draw(void *buffer, int bufwidth, int opaque, int c)
 {
   int i,j;
   uint8 *fa = (uint8 *)get_romfont_address();
@@ -465,13 +313,13 @@ pvr_ptr_t setup_font_texture() {
   int x, y;
   pvr_ptr_t buffer;
 
-  buffer = pvr_mem_malloc(256*256*2);
+  buffer = kos_mem_malloc(256*256*2);
   uint16 *vram = (uint16 *)buffer;
 
   vram = (uint16 *)buffer;
   for (y=0; y<8; y++) {
     for (x=0; x<16; x++) {
-	bfont_draw(vram, 256, 0, y*16+x);
+	_bfont_draw(vram, 256, 0, y*16+x);
 	vram += 16;
     }
     vram += 24*256;
@@ -555,14 +403,13 @@ typedef struct
     int size;
 } tex_header_t;
 
-#if 0
 pvr_ptr_t tex_load_cd(char *filename, int *tex_w, int *tex_h, int *type)
 {
     int file = 0;
     pvr_ptr_t buffer;
     tex_header_t header;
 
-    file = open(filename, 0);
+    file = open(filename, O_RDONLY);
     if (file < 0)
         return 0;
 
@@ -572,13 +419,12 @@ pvr_ptr_t tex_load_cd(char *filename, int *tex_w, int *tex_h, int *type)
     *tex_h = (int)header.height;
     *type = header.type;
 
-    buffer = pvr_mem_malloc(header.size);
+    buffer = kos_mem_malloc(header.size);
     read(file, buffer, header.size);
     close(file);
 
     return buffer;
 }
-#endif
 
 pvr_ptr_t tex_load_ram(unsigned char *in, int *tex_w, int *tex_h, int *type)
 {
@@ -592,17 +438,10 @@ pvr_ptr_t tex_load_ram(unsigned char *in, int *tex_w, int *tex_h, int *type)
     *tex_h = (int)header.height;
     *type = header.type;
 
-    buffer = pvr_mem_malloc(header.size);
+    buffer = kos_mem_malloc(header.size);
     memcpy(buffer, in + 16, header.size);
 
     return buffer;
-}
-
-int getCdState()
-{
-  unsigned int param[4];
-  gdGdcGetDrvStat(param);
-  return param[0];
 }
 
 static void draw_banner(pvr_poly_hdr_t *hdr, int w, int h)
@@ -639,41 +478,32 @@ static void draw_banner(pvr_poly_hdr_t *hdr, int w, int h)
 
 static int poll_input()
 {
-  int i;
-  int mask = getimask();
-  setimask(15);
-  
   int res = 0;
   int b;
-  struct mapledev *pad = locked_get_pads();
-  for (i = 0; i < 4; i++, pad++) {
-    b = 0;
-    if (pad->func & MAPLE_FUNC_CONTROLLER) {
-      b = ~pad->cond.controller.buttons & 0x0fff;
-    }
-    res |= b;
-  }
-  setimask(mask);
+
+  MAPLE_FOREACH_BEGIN(MAPLE_FUNC_CONTROLLER, cont_state_t, st)
+
+  b = st->buttons & 0x0fff;
+  res |= b;
+  
+  MAPLE_FOREACH_END()
   
   return res;
 
 }
 
 static int check_CD(const char *path) {
-	int fd;
-	DIR *dp;
+  int fd;
+  DIR *dirp;
 
-	fd = open(path, O_RDONLY);
-	if (fd >= 0) {
-		close(fd);
-		return 1;
-	}
-	dp = opendir(path);
-	if (dp) {
-		closedir(dp);
-		return 2;
-	}
-	return -1;
+  dirp = opendir(path);
+  if (dirp == NULL) {
+    return -1;
+  }
+
+  closedir(dirp);
+
+  return 1;
 }
 
 void LaunchMenu() {
@@ -689,41 +519,46 @@ void LaunchMenu() {
   pvr_poly_cxt_txr(&cxt, PVR_LIST_OP_POLY, type /*PVR_TXRFMT_RGB565|PVR_TXRFMT_VQ_ENABLE|PVR_TXRFMT_TWIDDLED*/, w, h, banner_tex, PVR_FILTER_BILINEAR);
   cxt.gen.culling = PVR_CULLING_NONE;
   cxt.txr.env = PVR_TXRENV_REPLACE;
-  pvr_poly_compile(&hdr0, &cxt);
+  kos_poly_compile(&hdr0, &cxt);
 
   font_tex = setup_font_texture();
- 
+
   pvr_poly_cxt_txr(&cxt, PVR_LIST_TR_POLY, PVR_TXRFMT_ARGB4444 | PVR_TXRFMT_NONTWIDDLED, 256, 256, font_tex, PVR_FILTER_NONE);
   cxt.gen.culling = PVR_CULLING_NONE;
   cxt.txr.env = PVR_TXRENV_MODULATE;
-  pvr_poly_compile(&hdr1, &cxt);
+  kos_poly_compile(&hdr1, &cxt);
   //*((volatile unsigned int *)(void *)0xa05f8040) = 0xFFFFFF;
-
+  
   int checked = 0;
   const char *path[] = {
-    "level/1/",
-    "data/",
+    "/cd/level/1/",
+    "/cd/data/",
     NULL
   };
 
+  /*
   for (i = 0; path[i] != NULL; i++) {
-    if(check_CD(path[i]) >= 0) {
+    if(check_CD(path[i]) > 0) {
       checked = 1;
       break;
     }
   }
+  */
+
+  checked = 0;
 
   frame = 32;
 
   int lid = 0;
   while ( !checked ) {
-    usleep(20000);
+
     if(frame > 255)
       frame = 0;
 
     int res = poll_input();
 
-    ta_begin_frame();
+    pvr_wait_ready();
+    pvr_scene_begin();
     pvr_list_begin(PVR_LIST_OP_POLY);
     draw_banner(&hdr0, w, h);
     pvr_list_finish();
@@ -732,43 +567,37 @@ void LaunchMenu() {
       draw_poly_strf(&hdr1, 0, 400, 1.0, 1.0, 1.0, 1.0, "INSERT GAME CD");
     }
     pvr_list_finish();
-    pvr_list_begin(PVR_LIST_PT_POLY);
-    pvr_list_finish();
-    ta_end_dlist();
+    pvr_scene_finish();
+
     frame++;
 
-    if (res == 0x0e)
+    if ((res & 0x60e) == 0x60e)
       break;
-     
-    int s = getCdState();
-    if (s >= 6) {
-      lid = 1;
-    }
-    if (s > 0 && s < 6 && lid) {
-      cdfs_reinit();
-      chdir("/"); // failed
-      chdir("/");
 
-      break;
+    timer_spin_sleep(17);
+    for (i = 0; path[i] != NULL; i++) {
+      if(check_CD(path[i]) > 0) {
+	checked = 1;
+      }
     }
   }
 
-  ta_begin_frame();
+  pvr_wait_ready();
+  pvr_scene_begin();
   pvr_list_begin(PVR_LIST_OP_POLY);
   draw_banner(&hdr0, w, h);
   pvr_list_finish();
   pvr_list_begin(PVR_LIST_TR_POLY);
   draw_poly_strf(&hdr1, 0, 400, 1.0, 1.0, 1.0, 1.0, "LOADING...");
   pvr_list_finish();
-  pvr_list_begin(PVR_LIST_PT_POLY);
-  pvr_list_finish();
-  ta_end_dlist();
+  pvr_scene_finish();
 
-  //usleep(1000);
-
-  ta_sync();
-  pvr_mem_free(banner_tex);
-  pvr_mem_free(font_tex);
+  pvr_wait_ready();
+  //pvr_scene_begin();
+  //pvr_scene_finish();
+  
+  kos_mem_free(banner_tex);
+  kos_mem_free(font_tex);
   return;
 }
 

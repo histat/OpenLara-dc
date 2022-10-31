@@ -1431,6 +1431,9 @@ struct Inventory {
     #ifdef FFP
         return; // TODO
     #endif
+    #ifdef _GAPI_TA
+        return;
+    #endif
 
         float s = 1.0f / INV_BG_SIZE;
         game->setShader(Core::passFilter, Shader::FILTER_GRAYSCALE, false, false);
@@ -1855,7 +1858,7 @@ struct Inventory {
         vertices[3].texCoord = short4(    0,     0, 0, 0);
 
         Texture *backTex = NULL;
-    #ifdef FFP
+#if defined(FFP)
         backTex = Core::blackTex;
 
         mat4 m;

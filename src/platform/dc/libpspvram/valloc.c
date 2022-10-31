@@ -11,6 +11,8 @@
 #include <malloc.h>
 #include "valloc.h"
 
+extern void *kospvrvramGetAddr();
+
 
 /* Use this to set the default valloc() alignment. */
 #define DEFAULT_VALIGNMENT	16
@@ -21,7 +23,7 @@
 
 
 #define VRAM_SIZE 0x400000
-#define VRAM_BASE ((unsigned int)0xa4400000)
+#define VRAM_BASE ((unsigned int)kospvrvramGetAddr())
 
 /* _vram_mem_block_header structure. */
 typedef struct _vram_mem_header {
@@ -66,12 +68,12 @@ size_t vgetMemorySize(unsigned int width, unsigned int height, unsigned int psm)
 
 inline void* vGuPointer( void *ptr )
 {
-	return (void*)((u32)ptr & ~VRAM_BASE);
+	return (void*)((u32)ptr - VRAM_BASE);
 }
 
 inline void* vCPUPointer( void *ptr )
 {
-	return (void*)((u32)ptr | VRAM_BASE);
+	return (void*)((u32)ptr + VRAM_BASE);
 }
 
 /* Find the smallest block that we can allocate AFTER, returning NULL if there

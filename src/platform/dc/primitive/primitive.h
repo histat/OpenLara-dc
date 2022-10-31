@@ -1,8 +1,6 @@
 #ifndef PRIM_H_INCLUDED
 #define PRIM_H_INCLUDED
 
-#include "private.h"
-
 typedef union {
     unsigned int color;
     unsigned char argb[4];
@@ -71,15 +69,15 @@ extern void primitive_buffer_flush(void);
 
 extern int primitive_header(void *header, int size);
 
-extern int primitive_nclip_polygon(pvr_vertex_t *vertex_list, int *index_list, int index_size);
-extern int primitive_nclip_polygon_strip(pvr_vertex_t *vertex_list, int *index_list, int index_size);
-extern int primitive_nclip_modifier(pvr_mod_hdr_t *eol_header, float *vertex_list, int *index_list, int index_size);
-extern int primitive_nclip_modifier_strip(pvr_mod_hdr_t *eol_header, float *vertex_list, int *index_list, int index_size);
+extern int primitive_nclip_polygon(polygon_vertex_t *vertex_list, int *index_list, int index_size);
+extern int primitive_nclip_polygon_strip(polygon_vertex_t *vertex_list, int *index_list, int index_size);
+extern int primitive_nclip_modifier(modifier_header_t *eol_header, float *vertex_list, int *index_list, int index_size);
+extern int primitive_nclip_modifier_strip(modifier_header_t *eol_header, float *vertex_list, int *index_list, int index_size);
 
-extern int primitive_polygon(pvr_vertex_t *vertex_list, int *index_list, int index_size);
-extern int primitive_polygon_strip(pvr_vertex_t *vertex_list, int *index_list, int index_size);
-extern int primitive_modifier(pvr_mod_hdr_t *eol_header, float *vertex_list, int *index_list, int index_size);
-extern int primitive_modifier_strip(pvr_mod_hdr_t *eol_header, float *vertex_list, int *index_list, int index_size);
+extern int primitive_polygon(polygon_vertex_t *vertex_list, int *index_list, int index_size);
+extern int primitive_polygon_strip(polygon_vertex_t *vertex_list, int *index_list, int index_size);
+extern int primitive_modifier(modifier_header_t *eol_header, float *vertex_list, int *index_list, int index_size);
+extern int primitive_modifier_strip(modifier_header_t *eol_header, float *vertex_list, int *index_list, int index_size);
 
 extern int prim_commit_vert_ready(int size);
 extern void prim_commit_poly_vert(polygon_vertex_t *p, int eos);

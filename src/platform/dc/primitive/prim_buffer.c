@@ -1,4 +1,5 @@
 #include "primitive.h"
+#include <kos.h>
 
 static unsigned int *buffer_base[5] = {(unsigned int *)0xe0000000, 0, 0, 0, 0};
 static unsigned int *buffer_offset[5] = {0, 0, 0, 0, 0};
@@ -6,8 +7,6 @@ static unsigned int *buffer_bottom[5] = {0, 0, 0, 0, 0};
 
 static int current_type = 0;
 static int direct_type = 0;
-
-static int ta_lists = 0;
 
 int primitive_buffer_init(int type, void *buffer, int size)
 {
@@ -44,9 +43,6 @@ int primitive_buffer_init(int type, void *buffer, int size)
 
 		direct_type = type;
 	}
-
-	if(size > 0)
-	  ta_lists |= (1<<type);
 
 	return 0;
 }
@@ -85,20 +81,12 @@ void primitive_buffer_flush(void)
 		if (i == direct_type)
 			continue;
 
-		if (ta_lists & (1<<i)) {
-			/* List start */
-			pvr_list_begin(i);
-
-		} else {
-			continue;
-		}
-
 		/* List disable */
 		if (buffer_base[i] == buffer_bottom[i])
 			continue;
 
 		/* List start */
-		//pvr_list_begin(i);
+		pvr_list_begin(i);
 
 		while (cnt)
 		{

@@ -4,17 +4,12 @@
 #include <sys/time.h>
 
 #include "game.h"
-
-#include <ronin/ronin.h>
-#include <ronin/soundcommon.h>
-
-#include "private.h"
 #include "icon_data_2bpp.h"
 
-extern "C" {
-  void dcExit();
-  void *memcpy4s(void *s1, const void *s2, unsigned int n);
-}
+#include <kos.h>
+#include "private.h"
+#include "watchdog.h"
+
 
 #ifdef ENABLE_LANG
 namespace DC_FLASH {
@@ -113,139 +108,106 @@ namespace DC_PAD
   
 }
 
-namespace DC_MUTEX {
-
-  struct Mutex {
-    Mutex() {}
-    ~Mutex() {}
-  };
-}
-
 // multi-threading
+#ifdef ENABLE_MUTEX
 void* osMutexInit() {
-  //return new DC_MUTEX::Mutex();
-  return NULL;
+  mutex_t *mutex;
+  mutex = (mutex_t *)malloc(sizeof(mutex_t));
+  if(!mutex) {
+    LOG("mutex: malloc");
+    return NULL;
+  }
+
+  int ret = mutex_init(mutex, MUTEX_TYPE_RECURSIVE);
+  if(ret != 0) {
+    LOG("mutex: init %d", ret);
+    return NULL;
+  }
+
+  return (void*)mutex;
 }
 
 void osMutexFree(void *obj) {
-  //DC_MUTEX::Mutex *o = (DC_MUTEX::Mutex*)obj; 
-  //delete (DC_MUTEX::Mutex *)o;
+
+  mutex_destroy((mutex_t *)obj);
+  free(obj);
 }
 
 void osMutexLock(void *obj) {
+  int ret = mutex_lock((mutex_t *)obj);
 }
 
 void osMutexUnlock(void *obj) {
+  int ret = mutex_unlock((mutex_t *)obj);
+}
+#else
+
+void* osMutexInit() {
+  return NULL;
 }
 
-// sound
+void osMutexFree(void *obj) {}
 
-const void* TRACKS_IMA=NULL;
+void osMutexLock(void *obj) {}
 
-void* osLoadtracks()
-{
-// tracks
-    if (!TRACKS_IMA)
-    {
-        int fd = open("data/TRACKS.IMA", O_RDONLY);
-        if (fd < 0)
-            return NULL;
-        int32 size = file_size(fd);
-        uint8* data = new uint8[size];
-        read(fd, data, size);
-        close(fd);
+void osMutexUnlock(void *obj) {}
+#endif
 
-        TRACKS_IMA = data;
-    }
-
-    return (void*)TRACKS_IMA;
-}
-
-uint32 curSoundBuffer = 0;
+#define SAMPLERATE 44100
 
 #define SND_FRAME_SIZE  4
-#define SND_FRAMES      176
+#define SND_FRAMES   2352
+Sound::Frame     sndBuf[SND_FRAMES] __attribute__((aligned(2)));
 
-uint32 soundBuffer [SND_FRAMES * 2 + 32] __attribute__((aligned(2)));
+static kthread_t * sndthd = NULL;
+
+static void* sndFill(void *arg);
 
 void sndInit() {
 
-  stop_sound();
-  do_sound_command(CMD_SET_BUFFER(3));
-  do_sound_command(CMD_SET_STEREO(1));
-  do_sound_command(CMD_SET_FREQ_EXP(FREQ_11025_EXP));
+  audio_init();
 
-  memset(soundBuffer, 0, SND_FRAMES * SND_FRAME_SIZE);
+  memset(sndBuf, 0, SND_FRAMES * SND_FRAME_SIZE);
 
-  osLoadtracks();
+  audio_register_ringbuffer(AUDIO_FORMAT_16BIT, SAMPLERATE, SND_FRAMES);
 
-  gCurTrack = -1;
+  sndthd = thd_create(0, &sndFill, NULL);
 }
 
-extern void sndFill(uint8* buffer, int32 count);
+static void* sndFill(void *arg) {
+    while (1) {
+      Sound::fill(sndBuf, SND_FRAMES);
+      audio_write_stereo_data(sndBuf, SND_FRAMES);
 
-void vblank()
-{
-  //frameIndex++;
-  if (read_sound_int(&SOUNDSTATUS->mode) != MODE_PLAY)
-    start_sound();
-
-  int ring_buffer_samples = read_sound_int(&SOUNDSTATUS->ring_length);
-  int n = read_sound_int(&SOUNDSTATUS->samplepos);
-
-  if ((n-=fillpos)<0)
-    n += ring_buffer_samples; //n = n + fillpos + (ring_buffer_samples - fillpos)
-
-  if (n < 20)
-    return;
-
-  uint32 *srcBuffer = soundBuffer + curSoundBuffer * SND_FRAMES;
-  //sndFill((uint8 *)soundBuffer, SND_FRAMES);
-  sndFill((uint8 *)srcBuffer, SND_FRAMES);
-
-  n = SND_FRAMES;
-
-  if (fillpos+n > ring_buffer_samples) {
-    int r = ring_buffer_samples - fillpos;
-    g2_memcpy4s(RING_BUF+fillpos, srcBuffer, SAMPLES_TO_BYTES(r));
-    fillpos = 0;
-    n -= r;
-    g2_memcpy4s(RING_BUF, srcBuffer+r, SAMPLES_TO_BYTES(n));
-  } else {
-    g2_memcpy4s(RING_BUF+fillpos, srcBuffer, SAMPLES_TO_BYTES(n));
-  }
-
-  if ((fillpos += n) >= ring_buffer_samples)
-    fillpos = 0;
-
-  curSoundBuffer ^= 1;
+      thd_sleep(20);
+    }
+    return NULL;
 }
 
 void sndFree() {
-  stop_sound();
+  audio_unregister_ringbuffer();
+
+  thd_destroy(sndthd);
 }
 
 // timing
 int osStartTime = 0;
 
 int osGetTimeMS() {
-  static unsigned int msecs = 0;
-	static unsigned int last = 0;
-	unsigned int t = Timer();
-	unsigned int diff = t - last;
-	unsigned int steps = (diff<<6) / (100000>>5);
-	diff -= (steps*(100000>>5))>>6;
-	last = t - diff;
-	msecs += steps;
-  return int(msecs-osStartTime);
+#if 0
+  timeval t;
+  gettimeofday(&t, NULL);
+  return int((t.tv_sec - osStartTime) * 1000 + t.tv_usec / 1000);
+#else
+  return (int)(timer_ms_gettime64() - osStartTime);
+#endif
 }
 
 void osCacheWrite(Stream *stream) {
     LOG("cache write : %s\n", stream->name);
 
-    if (stream->callback)
-      stream->callback(NULL, stream->userData);
-
+  if (stream->callback)    
+        stream->callback(new Stream(stream->name, stream->data, stream->size), stream->userData);
     delete stream;
 }
 
@@ -254,41 +216,13 @@ void osCacheRead(Stream *stream) {
 
     if (stream->callback)
       stream->callback(NULL, stream->userData);
-
     delete stream;
 }
 
 // memory card
 
-#define MAX_VMU_SIZE 4 * 1024
-
 static unsigned char lara_icon[32+512];
 static unsigned char lcd_icon[(48/8)*32];
-
-static int last_vm = -1;
-
-enum vmuresult {
-    VMU_OK,
-    VMU_NO,
-    VMU_NORES,
-    VMU_NOSPACE,
-    VMU_NOFILE,
-    VMU_READFAILE,
-    VMU_WRITEFAILE,
-    VMU_NOFILESPACE
-};
-
-vmuresult vmu_errno;
-
-static void setlcd(struct vmsinfo *info, void *bit)
-{
-  unsigned int param[50];
-
-  param[0] = MAPLE_FUNC_LCD<<24;
-  param[1] = 0;
-  memcpy(param+2, bit, 48*4);
-  maple_docmd(info->port, info->dev, MAPLE_COMMAND_BWRITE, 50, param);
-}
 
 static void conv_lcd_icon(unsigned char *bit, const unsigned char *in)
 {
@@ -337,289 +271,244 @@ static void conv_icon(unsigned char *bit, const unsigned char *in)
   }
 }
 
-bool saveVMU(int unit, const char *filename, const char *buf, int size, unsigned char *icon, unsigned char *lcd)
-{
-  struct vms_file_header header;
-  struct vmsinfo info;
-  struct superblock super;
-  struct vms_file file;
-  char new_filename[16];
-  unsigned int free_cnt;
-  time_t long_time;
-  struct tm *now_time;
-  struct timestamp stamp;
-
-  if (!vmsfs_check_unit(unit, 0, &info)) {
-    vmu_errno = VMU_NO;
-    return false;
-  }
-  if (!vmsfs_get_superblock(&info, &super)) {
-    vmu_errno = VMU_NORES;
-    return false;
-  }
-  free_cnt = vmsfs_count_free(&super);
-
-  strncpy(new_filename, filename, sizeof(new_filename));
-  if (vmsfs_open_file(&super, new_filename, &file))
-    free_cnt += file.blks;
-
-  if (((128+512+size+511)>>9) > free_cnt) {
-    vmu_errno = VMU_NOSPACE;
-    return false;
-  }
-
-  memset(&header, 0, sizeof(header));
-  strncpy(header.shortdesc, "Save Data",sizeof(header.shortdesc));
-  strncpy(header.longdesc, "OpenLara", sizeof(header.longdesc));
-  strncpy(header.id, "OpenLara", sizeof(header.id));
-  header.numicons = 1;
-  memcpy(header.palette, icon, sizeof(header.palette));
-
-  time(&long_time);
-  now_time = localtime(&long_time);
-  if (now_time != NULL) {
-    stamp.year = now_time->tm_year + 1900;
-    stamp.month = now_time->tm_mon + 1;
-    stamp.wkday = now_time->tm_wday;
-    stamp.day = now_time->tm_mday;
-    stamp.hour = now_time->tm_hour;
-    stamp.minute = now_time->tm_min;
-    stamp.second = now_time->tm_sec;
-  }
-
-  vmu_errno = VMU_OK;
-
-  vmsfs_beep(&info, 1);
-
-  if (!vmsfs_create_file(&super, new_filename, &header, icon+sizeof(header.palette), NULL, buf, size, &stamp)) {
-#ifndef NOSERIAL
-    fprintf(stderr,"%s",vmsfs_describe_error());
-#endif
-    vmsfs_beep(&info, 0);
-    vmu_errno = VMU_WRITEFAILE;
-    return false;
-  }
-  vmsfs_beep(&info, 0);
-
-  setlcd(&info, lcd);
-
-  return true;
-}
-
-bool loadVMU(int unit, const char *filename, char *&buf, int &size, unsigned char *lcd)
-{
-  struct vmsinfo info;
-  struct superblock super;
-  struct vms_file file;
-
-  if (!vmsfs_check_unit(unit, 0, &info)) {
-    vmu_errno = VMU_NO;
-    return false;
-  }
-  if (!vmsfs_get_superblock(&info, &super)) {
-    vmu_errno = VMU_NORES;
-    return false;
-  }
-  if (!vmsfs_open_file(&super, filename, &file)) {
-    vmu_errno = VMU_NOFILE;
-    return false;
-  }
-
-  size = file.size;
-
-  buf = new char[size];
-
-  if (!vmsfs_read_file(&file, (unsigned char *)buf, size)) {
-    vmu_errno = VMU_READFAILE;
-    return false;
-  }
-
-  setlcd(&info, lcd);
-
-  vmu_errno = VMU_OK;
-
-  return true;
-}
 
 void osReadSlot(Stream *stream) {
   LOG("read slot : %s\n", stream->name);
 
-  int size;
-  char *data;
+  maple_device_t *dev;
+  vmu_pkg_t pkg;
   
-  if(last_vm >= 0 && loadVMU(last_vm, stream->name, data, size, lcd_icon)) {
+  char *data;
+  int len;
 
+  uint8 *buf;
+  int size;
+
+  dev = maple_enum_type(0, MAPLE_FUNC_MEMCARD);
+
+  if (!dev) {
+    return;
+  }
+
+  if (dev->info.functions & MAPLE_FUNC_LCD) {
+    vmu_draw_lcd(dev, lcd_icon);
+  }
+
+  if (vmufs_read(dev, stream->name, (void **)&buf, &size) < 0) {
     if (stream->callback)
-      stream->callback(new Stream(stream->name, data, size), stream->userData);
-
-    delete[] data;
+      stream->callback(NULL, stream->userData);
+  
     delete stream;
     return;
   }
 
-  last_vm = -1;
+  vmu_pkg_parse(buf, &pkg);
+  
+  data = (char *) pkg.data;
+  len = pkg.data_len;
 
-  for (int i=0; i<24; i++)
-     if(loadVMU(i, stream->name, data, size, lcd_icon)) {
-      last_vm = i;
-      break;
-  }
+  if (stream->callback)
+    stream->callback(new Stream(stream->name, data, len), stream->userData);
 
-  if (last_vm >= 0) {
-    if (stream->callback)
-      stream->callback(new Stream(stream->name, data, size), stream->userData);
-    delete[] data;
-  } else
-      if (stream->callback)
-          stream->callback(NULL, stream->userData);
+  if (buf)
+    free(buf);
 
+  delete[] data;
   delete stream;
-
-  LOG("%s %d:\n",__FUNCTION__, vmu_errno);
 }
 
 void osWriteSlot(Stream *stream) {
   LOG("write slot : %s 0x%x\n", stream->name, stream->size);
+  maple_device_t *dev;
+  int free_bytes;
+  vmu_pkg_t   pkg;
+  int hdr_size;
+  //uint8 *buf;
+  uint8 *data;
+  int bufSize;
+  int ret;
+  char filename[64];
 
-  if (last_vm >= 0 && saveVMU(last_vm, stream->name, stream->data, stream->size, lara_icon, lcd_icon)) {
-     if (stream->callback)
-      stream->callback(new Stream(stream->name, stream->data, stream->size), stream->userData);
+  free_bytes = 0;
+
+  dev = maple_enum_type(0, MAPLE_FUNC_MEMCARD);
+
+  if (dev) {
+    
+    free_bytes = vmufs_free_blocks(dev);
+  }
+
+  if (free_bytes < ((stream->size+128+512+511)/512)) {
+    if (stream->callback)
+      stream->callback(NULL, stream->userData);
+
+    delete stream;
+
+    return;
+  }
+
+  if (dev->info.functions & MAPLE_FUNC_LCD) {
+    vmu_draw_lcd(dev, lcd_icon);
+  }
+  
+  memset(&pkg, 0, sizeof(struct vmu_pkg));
+  strncpy(pkg.desc_short, "OpenLara", 16);
+  strncpy(pkg.desc_long, "Save Data", 32);
+  strncpy(pkg.app_id, "OpenLara", 16);
+  pkg.icon_cnt = 1;
+  pkg.icon_anim_speed = 0;
+  pkg.eyecatch_type = VMUPKG_EC_NONE;
+  memcpy(&pkg.icon_pal, &lara_icon, 32);
+  pkg.icon_data =  lara_icon + 32;
+  pkg.eyecatch_data = NULL;
+
+  hdr_size = sizeof(struct vmu_hdr) + 512;
+  pkg.data = (const uint8*)stream->data;
+
+  pkg.data_len = stream->size;
+
+  ret = vmu_pkg_build(&pkg, (uint8 **)&data, &bufSize);
+  if (ret < 0) {
+    free(data);
+    if (stream->callback)
+      stream->callback(NULL, stream->userData);
 
     delete stream;
     return;
   }
 
-  last_vm = -1;
+  vmufs_write(dev, stream->name, data, bufSize, VMUFS_OVERWRITE);
+  free(data);
 
-  for (int i=0; i<24; i++)
-    if (saveVMU(i, stream->name, stream->data, stream->size, lara_icon, lcd_icon)) {
-      last_vm = i;
-      break;
-    }
-
-  if (last_vm >= 0) {
-     if (stream->callback)
-      stream->callback(new Stream(stream->name, stream->data, stream->size), stream->userData);
-  } else
-      if (stream->callback)
-        stream->callback(NULL, stream->userData);
+  if (stream->callback)
+    stream->callback(new Stream(stream->name, stream->data, stream->size), stream->userData);
 
   delete stream;
-
-  LOG("%s %d:\n",__FUNCTION__, vmu_errno);
 }
 
 // Input
+
+#define INPUT_JOY_COUNT 4
+
+struct JoyDevice {
+    maple_device_t *dev;
+    int               time;
+    float             vL, vR;
+    float             oL, oR;
+} joyDevice[INPUT_JOY_COUNT];
+
+static purupuru_effect_t effect;
+#define JOY_MIN_UPDATE_FX_TIME   50
+
 bool osJoyReady(int index) {
-  return index == 0;
+	return joyDevice[index].dev != NULL;
 }
 
-#define X_MAX(a,b)       ((a) > (b) ? (a) : (b))
-#define CART_RUMBLE_TICKS     6
-
-int32 cartRumbleTick = 0;
-
-struct rumbinfo rumblepack;
 void rumbleInit()
 {
-  rumble_check_unit(1, &rumblepack);
+	effect.duration = 0x00;
+	effect.effect2 = 0x00;
+	effect.effect1 = 0x00;
+	effect.special = PURUPURU_SPECIAL_MOTOR1;
 }
 
-void rumbleSet(bool enable)
-{
-    if (enable) {
-        cartRumbleTick = CART_RUMBLE_TICKS;
-    } else {
-        cartRumbleTick = 0;
-    }
+void joyRumble(int index) {
 
-    if(cartRumbleTick)
-      rumble_set(&rumblepack, 1);
-    else
-      rumble_set(&rumblepack, 0);
-}
+  //maple_device_t *dev;
 
-void rumbleUpdate(int32 frames)
-{
-    if (!cartRumbleTick)
-        return;
+    JoyDevice &joy = joyDevice[index];
+    float intensity;
+    if (joy.dev && (joy.vL != joy.oL || joy.vR != joy.oR) && Core::getTime() >= joy.time) {
+      intensity = max(joy.vL, joy.vR);
+      if (intensity > 10) {
+	  effect.duration = 0xFF;
+	  effect.effect1 = PURUPURU_EFFECT1_INTENSITY(6) | PURUPURU_EFFECT1_PULSE;
+	  effect.effect2 = PURUPURU_EFFECT2_UINTENSITY(3);
+	  effect.special = PURUPURU_SPECIAL_MOTOR1;
+      } else {
+	  effect.duration = 0xFF;
+	  effect.effect1 = PURUPURU_EFFECT1_INTENSITY(2) | PURUPURU_EFFECT1_PULSE;
+	  effect.effect2 = PURUPURU_EFFECT2_UINTENSITY(2);
+	  effect.special = PURUPURU_SPECIAL_MOTOR1;
+      }
 
-    cartRumbleTick -= frames;
+      purupuru_rumble(joy.dev, &effect);
 
-    if (cartRumbleTick <= 0) {
-        rumbleSet(false);
+      joy.oL = joy.vL;
+      joy.oR = joy.vR;
+      joy.time = Core::getTime() + JOY_MIN_UPDATE_FX_TIME;
     }
 }
 
 void osJoyVibrate(int index, float L, float R) {
-    rumbleSet(X_MAX(L, R) > 0);
+	joyDevice[index].vL = L;
+	joyDevice[index].vR = R;
 }
 
-void joyInit() {
-  set_vbl_handler(vblank);
+void joyInit()
+{
 }
 
 void joyUpdate() {
 
-  static unsigned int tick = 0;
-  unsigned int t = Timer();
-  if ((t - tick) < 0) {
-    return;
-  }
-
-  tick += USEC_TO_TIMER(17000);
-  if ((t - tick) >= 0) {
-    tick += t+USEC_TO_TIMER(17000);
-  }
-
-  int mask = getimask();
-  setimask(15);
-
   int JoyCnt = 0;
+  maple_device_t *dev;
 
-  struct mapledev *pad = locked_get_pads();
-  for (int i = 0; i < 4; i++, pad++) {
-    if ( pad->func & MAPLE_FUNC_CONTROLLER && JoyCnt < 2) {
-      int Buttons = ~pad->cond.controller.buttons & 0x0fff;
-      Buttons |= ((pad->cond.controller.ltrigger > 30) ? DC_PAD::JOY_LTRIGGER:0);
-      Buttons |= ((pad->cond.controller.rtrigger > 30) ? DC_PAD::JOY_RTRIGGER:0);
-      int joyx = pad->cond.controller.joyx;
-      int joyy = pad->cond.controller.joyy;
-      
-      if (Buttons == 0x0606)
-	      Core::quit();
-      
+  for (int i = 0; i < INPUT_JOY_COUNT; i++) {
+    dev = maple_enum_dev(i, 0);
+
+    if (dev && (dev->info.functions & MAPLE_FUNC_CONTROLLER)) {
+
+      cont_state_t *st = (cont_state_t *)maple_dev_status(dev);
+      joyDevice[JoyCnt].dev = dev;
+#if 0
+      if (dev->info.functions & MAPLE_FUNC_LCD) {
+	vmu_draw_lcd(dev, lcd_icon);
+      }
+#endif
+
+      int Buttons = st->buttons & 0x0fff;
+      Buttons |= ((st->ltrig > 30) ? DC_PAD::JOY_LTRIGGER:0);
+      Buttons |= ((st->rtrig > 30) ? DC_PAD::JOY_RTRIGGER:0);
+
       Input::setJoyDown(JoyCnt, jkUp, Buttons & DC_PAD::JOY_DPAD_UP);
       Input::setJoyDown(JoyCnt, jkDown, Buttons & DC_PAD::JOY_DPAD_DOWN);
       Input::setJoyDown(JoyCnt, jkLeft, Buttons & DC_PAD::JOY_DPAD_LEFT);
       Input::setJoyDown(JoyCnt, jkRight, Buttons & DC_PAD::JOY_DPAD_RIGHT);
-      
+  
       Input::setJoyDown(JoyCnt, jkA,  (Buttons & DC_PAD::JOY_BTN_A));
       Input::setJoyDown(JoyCnt, jkB,  (Buttons & DC_PAD::JOY_BTN_B));
       Input::setJoyDown(JoyCnt, jkX,  (Buttons & DC_PAD::JOY_BTN_X));
       Input::setJoyDown(JoyCnt, jkY,  (Buttons & DC_PAD::JOY_BTN_Y));
       Input::setJoyDown(JoyCnt, jkLB, (Buttons & DC_PAD::JOY_LTRIGGER));
       Input::setJoyDown(JoyCnt, jkRB, (Buttons & DC_PAD::JOY_RTRIGGER));
+  
       if ((Buttons & DC_PAD::JOY_LTRIGGER) != 0)
-	        Input::setJoyDown(JoyCnt, jkStart, (Buttons & DC_PAD::JOY_BTN_START));
+	Input::setJoyDown(JoyCnt, jkStart, (Buttons & DC_PAD::JOY_BTN_START));
       else
-	        Input::setJoyDown(JoyCnt, jkSelect, (Buttons & DC_PAD::JOY_BTN_START));
+	Input::setJoyDown(JoyCnt, jkSelect, (Buttons & DC_PAD::JOY_BTN_START));
       if ((Buttons & DC_PAD::JOY_BTN_C) != 0)
-	        Input::setJoyDown(JoyCnt, jkLB, (Buttons & DC_PAD::JOY_BTN_C));
+	Input::setJoyDown(JoyCnt, jkLB, (Buttons & DC_PAD::JOY_BTN_C));
       if ((Buttons & DC_PAD::JOY_BTN_Z) != 0)
-	        Input::setJoyDown(JoyCnt, jkRB, (Buttons & DC_PAD::JOY_BTN_Z));
-      
+	Input::setJoyDown(JoyCnt, jkRB, (Buttons & DC_PAD::JOY_BTN_Z));
+  
+      int joyx = st->joyx+128;
+      int joyy = st->joyy+128;
+      int joy2x = st->joy2x+128;
+      int joy2y = st->joy2y+128;
+
       vec2 stick = vec2(float(joyx), float(joyy)) / 128.0f - 1.0f;
-      if (fabsf(joyx) < 0.2f && fabsf(joyy) < 0.2f)
-        	stick = vec2(0.0f);
-      
+      if (FABS(joyx) < 0.2f && FABS(joyy) < 0.2f)
+	stick = vec2(0.0f);
       Input::setJoyPos(JoyCnt, jkL, stick);
-      
+
+      stick = vec2(float(joy2x), float(joy2y)) / 128.0f - 1.0f;
+      if (FABS(joy2x) < 0.2f && FABS(joy2y) < 0.2f)
+	stick = vec2(0.0f);
+      Input::setJoyPos(JoyCnt, jkR, stick);
       JoyCnt++;
     }
   }
-
-  setimask(mask);
 }
 
 #ifdef ENABLE_LANG
@@ -651,6 +540,8 @@ int main()
     //printf("start time %d\n", osStartTime);
     cacheDir[0] = saveDir[0] = contentDir[0] = 0;
 
+    strcat(contentDir, "/cd/");
+
     conv_icon(lara_icon, icon_data_2bpp);
     conv_lcd_icon(lcd_icon, icon_data_2bpp);
 
@@ -668,40 +559,32 @@ int main()
 
     Game::init();
 
-    //Game::init("PSXDATA/GYM.PSX");
     //Game::init("DATA/LEVEL1.PHD");
     //Game::init("DATA/LEVEL2.PHD");
-    //Game::init("DEMODATA/LEVEL2.DEM");
-    //Game::init("DATA/CUT1.PHD");
-
-    int32 lastFrameIndex = -1;
+    //Game::init("DATA/GYM.PHD");
+#ifndef NOSERIAL
+    wdResume();
+#endif
 
     while (!Core::isQuit) {
+#ifndef NOSERIAL
+      wdPet();
+#endif
       joyUpdate();
 
-      int32 frame = Core::stats.frameIndex / 2;
-      int32 delta = frame - lastFrameIndex;
-
-      lastFrameIndex = frame;
-
-      if (delta != 0)
-        rumbleUpdate(delta);
-
-
       if (Game::update()) {
-	        ta_begin_frame();
-	        primitive_buffer_begin();
-	        Game::render();
-	        primitive_buffer_flush();
-	        ta_end_dlist();
+	pvr_wait_ready();
+	pvr_scene_begin();
+	primitive_buffer_begin();
+	Game::render();
+	primitive_buffer_flush();
+	pvr_scene_finish();
       }
-
     }
 
     sndFree();
     Game::deinit();
 
-    dcExit();
     return 0;
 }
 

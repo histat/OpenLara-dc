@@ -222,6 +222,7 @@
 
     #define INV_SINGLE_PLAYER
     #define INV_GAMEPAD_ONLY
+    #include <kos.h>
 
     #undef OS_FILEIO_CACHE
     #undef OS_PTHREAD_MT
@@ -267,7 +268,7 @@
 #elif defined(_OS_PSV)
     #define SHADOW_TEX_SIZE      1024
 #elif defined(_OS_DC)
-     #define SHADOW_TEX_SIZE     512   
+     #define SHADOW_TEX_SIZE     256
 #else
     #define SHADOW_TEX_SIZE      2048
 #endif
@@ -786,9 +787,9 @@ namespace Core {
 
         void stop() {
             if (fpsTime < Core::getTime()) {
-                #ifndef _OS_DC
+	    #ifndef _OS_DC
                 LOG("FPS: %d DIP: %d TRI: %d RT: %d\n", fps, dips, tris, rt);
-                #endif
+	    #endif
             #ifdef PROFILE
                 LOG("frame time: %d mcs\n", tFrame / 1000);
                 LOG("sound: mix %d rev %d ren %d/%d ogg %d\n", Sound::stats.mixer, Sound::stats.reverb, Sound::stats.render[0], Sound::stats.render[1], Sound::stats.ogg);

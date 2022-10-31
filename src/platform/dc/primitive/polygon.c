@@ -1,7 +1,8 @@
 #include "primitive.h"
+#include <kos.h>
 
 
-int primitive_nclip_polygon(pvr_vertex_t *vertex_list, int *index_list, int index_size)
+int primitive_nclip_polygon(polygon_vertex_t *vertex_list, int *index_list, int index_size)
 {
 	polygon_vertex_t *p = (polygon_vertex_t *)vertex_list;
 	int commit_vertex = 0;
@@ -104,7 +105,7 @@ int primitive_nclip_polygon(pvr_vertex_t *vertex_list, int *index_list, int inde
 	return commit_vertex;
 }
 
-int primitive_nclip_polygon_strip(pvr_vertex_t *vertex_list, int *index_list, int index_size)
+int primitive_nclip_polygon_strip(polygon_vertex_t *vertex_list, int *index_list, int index_size)
 {
 	polygon_vertex_t *p = (polygon_vertex_t *)vertex_list;
 	int commit_vertex = 0;
@@ -232,7 +233,7 @@ int primitive_nclip_polygon_strip(pvr_vertex_t *vertex_list, int *index_list, in
 	return commit_vertex;
 }
 
-int primitive_polygon(pvr_vertex_t *vertex_list, int *index_list, int index_size)
+int primitive_polygon(polygon_vertex_t *vertex_list, int *index_list, int index_size)
 {
 	polygon_vertex_t *p = (polygon_vertex_t *)vertex_list;
 	int i;
@@ -256,7 +257,7 @@ int primitive_polygon(pvr_vertex_t *vertex_list, int *index_list, int index_size
 	return index_size;
 }
 
-int primitive_polygon_strip(pvr_vertex_t *vertex_list, int *index_list, int index_size)
+int primitive_polygon_strip(polygon_vertex_t *vertex_list, int *index_list, int index_size)
 {
 	polygon_vertex_t *p = (polygon_vertex_t *)vertex_list;
 	int commit_vertex = 0;

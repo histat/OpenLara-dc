@@ -1,7 +1,8 @@
 #include "primitive.h"
+#include <kos.h>
 
 
-int primitive_nclip_strip(pvr_vertex_t *vertex_list, int *index_list, int index_size)
+int primitive_nclip_strip(polygon_vertex_t *vertex_list, int *index_list, int index_size)
 {
 	polygon_vertex_t *p = (polygon_vertex_t *)vertex_list;
 	int commit_vertex = 0;
@@ -129,7 +130,7 @@ int primitive_nclip_strip(pvr_vertex_t *vertex_list, int *index_list, int index_
 	return commit_vertex;
 }
 
-int primitive_strip(pvr_vertex_t *vertex_list, int *index_list, int index_size)
+int primitive_strip(polygon_vertex_t *vertex_list, int *index_list, int index_size)
 {
 	polygon_vertex_t *p = (polygon_vertex_t *)vertex_list;
 	int commit_vertex = 0;

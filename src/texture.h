@@ -38,10 +38,9 @@ struct Texture : GAPI::Texture {
             vqTex *tiles;
 
             Texture(Tile8 *tiles, int tilesCount) : GAPI::Texture(256, 256, 1, OPT_PROXY) {
-                    this->tiles = (vqTex *)GAPI::allocVRAM(tilesCount * sizeof(vqTex));
-
-                    for (int i = 0; i < tilesCount; i++)
-                        GAPI::upload_vram((uint8*)&this->tiles[i], (uint8*)&tiles[i], width, height);
+	      this->tiles = (vqTex *)GAPI::allocVRAM(tilesCount * sizeof(vqTex));
+	      for (int i = 0; i < tilesCount; i++)
+		GAPI::upload_vram((uint8*)&this->tiles[i], (uint8*)&tiles[i], width, height);
             }
         #else
             Texture *tiles[32];

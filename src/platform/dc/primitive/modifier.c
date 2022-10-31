@@ -1,5 +1,5 @@
 #include "primitive.h"
-
+#include <kos.h>
 
 
 #define INTER_POINT(R, P, Q)                                \
@@ -10,7 +10,7 @@
 	R.x = (P.x * pw + (Q.x * qw - P.x * pw) * inter) * R.z; \
 	R.y = (P.y * pw + (Q.y * qw - P.y * pw) * inter) * R.z;
 
-int primitive_nclip_modifier(pvr_mod_hdr_t *eol_header, float *vertex_list, int *index_list, int index_size)
+int primitive_nclip_modifier(modifier_header_t *eol_header, float *vertex_list, int *index_list, int index_size)
 {
 	modifier_header_t *header = (modifier_header_t *)eol_header;
 	vertex_3f_t *p = (vertex_3f_t *)vertex_list;
@@ -123,7 +123,7 @@ int primitive_nclip_modifier(pvr_mod_hdr_t *eol_header, float *vertex_list, int 
 	return commit_faces;
 }
 
-int primitive_nclip_modifier_strip(pvr_mod_hdr_t *eol_header, float *vertex_list, int *index_list, int index_size)
+int primitive_nclip_modifier_strip(modifier_header_t *eol_header, float *vertex_list, int *index_list, int index_size)
 {
 	modifier_header_t *header = (modifier_header_t *)eol_header;
 	vertex_3f_t *p = (vertex_3f_t *)vertex_list;
@@ -256,7 +256,7 @@ int primitive_nclip_modifier_strip(pvr_mod_hdr_t *eol_header, float *vertex_list
 
 #undef INTER_POINT
 
-int primitive_modifier(pvr_mod_hdr_t *eol_header, float *vertex_list, int *index_list, int index_size)
+int primitive_modifier(modifier_header_t *eol_header, float *vertex_list, int *index_list, int index_size)
 {
 	modifier_header_t *header = (modifier_header_t *)eol_header;
 	vertex_3f_t *p = (vertex_3f_t *)vertex_list;
@@ -274,7 +274,7 @@ int primitive_modifier(pvr_mod_hdr_t *eol_header, float *vertex_list, int *index
 	return index_size / 3 * 2;
 }
 
-int primitive_modifier_strip(pvr_mod_hdr_t *eol_header, float *vertex_list, int *index_list, int index_size)
+int primitive_modifier_strip(modifier_header_t *eol_header, float *vertex_list, int *index_list, int index_size)
 {
 	modifier_header_t *header = (modifier_header_t *)eol_header;
 	vertex_3f_t *p = (vertex_3f_t *)vertex_list;

@@ -67,12 +67,12 @@
 #endif
 
 #ifdef _OS_DC
-#ifdef NOSERIAL
-    #undef LOG
-    #define LOG(...)
+#undef LOG
+#ifndef NOSERIAL
+#define LOG(...) printf(__VA_ARGS__); fflush(stdout);
+#else
+#define LOG(...)
 #endif
-    #undef ASSERT
-    #define ASSERT(expr)
 #endif
 
 #ifdef _OS_PSP
@@ -112,6 +112,29 @@
 
 #define SQR(x)  ((x)*(x))
 #define randf() (float(rand())/float(RAND_MAX))
+
+#ifdef _OS_DC
+#ifndef KOS_FIX
+#define int8 _int8
+#define int16 _int16
+#define int32 _int32
+#define uint8 _uint8
+#define uint16 _uint16
+#define uint32 _uint32
+#define KOS_FIX
+#endif
+#include <kos.h>
+#ifdef KOS_FIX
+#undef _int8
+#undef _int16
+#undef _int32
+#undef _uint8
+#undef _uint16
+#undef _uint32
+#undef KOS_FIX
+#endif
+#undef STATE_WAIT
+#endif
 
 typedef signed char        int8;
 typedef signed short       int16;
@@ -649,22 +672,10 @@ struct mat4 {
         PROJ_ZERO_POS,
     };
 
-#ifdef _OS_DC
-    union {
-        struct {
-          float e00, e10, e20, e30,
-                e01, e11, e21, e31,
-                e02, e12, e22, e32,
-                e03, e13, e23, e33;
-        };
-        float m[4][4];
-    };
-#else
     float e00, e10, e20, e30,
           e01, e11, e21, e31,
           e02, e12, e22, e32,
           e03, e13, e23, e33;
-#endif
 
     vec4& right()  const { return *((vec4*)&e00); }
     vec4& up()     const { return *((vec4*)&e01); }

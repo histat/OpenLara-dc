@@ -14,18 +14,6 @@
 #include "network.h"
 #include "extension.h"
 
-#ifdef _OS_DC
-extern void sndPlayTrack(int32 track);
-extern void sndStopTrack();
-extern bool sndTrackIsPlaying();
-extern void sndStop();
-
-extern void* sndPlaySample(const uint8 *data, int32 volume, int32 pitch, int32 mode);
-extern void sndStopSample(const uint8 *data);
-
-extern int32 gCurTrack;
-#endif
-
 #if defined(_DEBUG) && defined(_GAPI_GL) && !defined(_GAPI_GLES)
     #define DEBUG_RENDER
 #endif
@@ -98,11 +86,7 @@ struct Level : IGame {
 // IGame implementation ========
     virtual void loadLevel(TR::LevelID id) {
         sndWater = sndTrack = NULL;
-        #ifdef _OS_DC
-        sndStop();
-        #else
         Sound::stopAll();
-        #endif
         nextLevel = id;
     }
 
@@ -595,9 +579,9 @@ struct Level : IGame {
             GAPI::setPalette(room.flags.water ? GAPI::swPaletteWater : GAPI::swPaletteColor);
             GAPI::setShading(true);
         #endif
+
         #ifdef _GAPI_TA
-            GAPI::setPalette(room.flags.water ? GAPI::swPaletteWater : GAPI::swPaletteColor);
-            GAPI::setShading(true);
+            GAPI::setPalette(room.flags.water ? GAPI::PaletteWater : GAPI::PaletteColor);
         #endif
 
         Core::setMaterial(material.x, material.y, material.z, material.w);
@@ -874,40 +858,17 @@ struct Level : IGame {
 
             if (b.flags.gain) volume = max(0.0f, volume - randf() * 0.25f);
             //if (b.flags.camera) flags &= ~Sound::PAN;
-            #ifdef _OS_DC
-            if (volume > 0.001f) {
-                if (!(flags & (Sound::FLIPPED | Sound::UNFLIPPED | Sound::MUSIC)) && (flags & Sound::PAN)) {
-                    vec3 listenerPos = Sound::getListener(pos).matrix.getPos();
-                    vec3 d = pos - listenerPos;
-
-                    if (fabsf(d.x) > SND_FADEOFF_DIST || fabsf(d.y) > SND_FADEOFF_DIST || fabsf(d.z) > SND_FADEOFF_DIST) {
-                        return NULL;
-                    }
-                }
-
-                const uint8 *data = (const uint8*)level.soundData + level.soundOffsets[index];
-                int32 intvolume = volume * 128;
-                int32 intpitch = pitch * 128;
-                sndPlaySample(data, intvolume, intpitch, flags);
-            }
-            #else
             return Sound::play(level.getSampleStream(index), &pos, volume, pitch, flags, id);
-            #endif
         }
         return NULL;
     }
 
     void stopChannel(Sound::Sample *channel) {
-        #ifdef _OS_DC
-        if (level.state.flags.track != TR::LEVEL_INFO[level.id].track && TR::LEVEL_INFO[level.id].track != TR::NO_TRACK) // play ambient track
-            playTrack(0);
-        #else
         if (channel == sndTrack) {
             sndTrack = NULL;
             if (level.state.flags.track != TR::LEVEL_INFO[level.id].track && TR::LEVEL_INFO[level.id].track != TR::NO_TRACK) // play ambient track
                 playTrack(0);
         }
-        #endif
     }
 
     struct TrackRequest {
@@ -917,7 +878,6 @@ struct Level : IGame {
         TrackRequest(Level *level, int flags) : level(level), flags(flags) {}
     };
 
-    #ifndef _OS_DC
     static void playAsync(Stream *stream, void *userData) {
         TrackRequest *req = (TrackRequest*)userData;
         Level *level = req->level;
@@ -941,26 +901,12 @@ struct Level : IGame {
             Sound::play(stream, NULL, 1.0f, 1.0f, req->flags);
         delete req;
     }
-    #endif
 
     virtual void playTrack(uint8 track, bool background = false) {
-        #ifdef _OS_DC
         if (background) {
-            sndPlayTrack(track);
-            return;
-        }
-
-        if (track == 0)
-            track = TR::LEVEL_INFO[level.id].track;
-
-        level.state.flags.track = track;
-
-        sndPlayTrack(track);
-
-        UI::showSubs(TR::getSubs(level.version, track));
-        #else
-        if (background) {
+      #ifndef _OS_DC
             TR::getGameTrack(level.version, track, playAsyncBG, new TrackRequest(this, Sound::MUSIC));
+      #endif
             return;
         }
 
@@ -991,19 +937,13 @@ struct Level : IGame {
             flags |= Sound::LOOP;
 
         waitTrack = true;
-        sndPlayTrack(track);
         TR::getGameTrack(level.version, track, playAsync, new TrackRequest(this, flags));
 
         UI::showSubs(TR::getSubs(level.version, track));
-        #endif
     }
 
     virtual void stopTrack() {
-        #ifdef _OS_DC
-        sndStopTrack();
-        #else
         playTrack(0xFF);
-        #endif
     }
 //==============================
 
@@ -1015,9 +955,6 @@ struct Level : IGame {
 
     #ifdef _GAPI_GU
         GAPI::freeEDRAM();
-    #endif
-    #ifdef _GAPI_TA
-        GAPI::freeVRAM();
     #endif
 
         nextLevel = TR::LVL_MAX;
@@ -1148,11 +1085,7 @@ struct Level : IGame {
         #endif
         delete mesh;
 
-        #ifdef _OS_DC
-        sndStop();
-        #else
         Sound::stopAll();
-        #endif
     }
 
     void init(bool playLogo, bool playVideo) {
@@ -1852,7 +1785,6 @@ struct Level : IGame {
                 level.fillObjectTexture((AtlasTile*)tiles[t.tile].data, uv, &t);
             }
 
-        #ifdef USE_INFLATE
             for (int i = 0; i < level.tilesCount; i++) {
                 char buf[256];
                 sprintf(buf, "texture/%s_%d.png", TR::LEVEL_INFO[level.id].name, i);
@@ -1862,7 +1794,6 @@ struct Level : IGame {
                     tiles[i].data = (uint32*)Texture::LoadPNG(stream, tiles[i].width, tiles[i].height);
                 }
             }
-        #endif
 
             atlasRooms   =
             atlasObjects =
@@ -1874,7 +1805,7 @@ struct Level : IGame {
             delete[] tiles;
         #endif
 
-        #if !defined(_GAPI_SW) && !defined(_GAPI_TA)
+        #ifndef _GAPI_SW
         for (int i = 0; i < level.objectTexturesCount; i++) {
             TR::TextureInfo &t = level.objectTextures[i];
 
@@ -2271,19 +2202,11 @@ struct Level : IGame {
         }
 
         if (level.isCutsceneLevel() && waitTrack) {
-            #ifdef _OS_DC
-            if (TR::LEVEL_INFO[level.id].track != TR::NO_TRACK) {
-                if (camera->timer > 0.0f) // for the case that audio stops before animation ends
-                    loadNextLevel();
-                return;
-            }
-            #else
             if (!sndTrack && TR::LEVEL_INFO[level.id].track != TR::NO_TRACK) {
                 if (camera->timer > 0.0f) // for the case that audio stops before animation ends
                     loadNextLevel();
                 return;
             }
-            #endif
 
             if (cutsceneWaitTimer > 0.0f) {
                 cutsceneWaitTimer -= Core::deltaTime;
@@ -3522,10 +3445,11 @@ struct Level : IGame {
             GAPI::setPalette(GAPI::swPaletteColor);
             GAPI::setShading(false);
         #endif
+
         #ifdef _GAPI_TA
-            GAPI::setPalette(GAPI::swPaletteColor);
-            GAPI::setShading(false);
+            GAPI::setPalette(GAPI::PaletteColor);
         #endif
+
 
         Core::pushLights();
 
