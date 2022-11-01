@@ -178,12 +178,16 @@ uint32_t __audio_exchange_command(uint32_t command, uint32_t param1, uint32_t pa
 
 void _audio_init()
 {
-  mutex_init(&g2bus_mutex, MUTEX_TYPE_RECURSIVE);
+  int ret = mutex_init(&g2bus_mutex, MUTEX_TYPE_RECURSIVE);
+
+  if(ret != 0) {
+    printf("mutex: init %d", ret);
+  }
 }
 
 void _audio_free()
 {
-  //mutex_free(&g2bus_mutex);
+  mutex_destroy(&g2bus_mutex);
 }
 
 void audio_init()
