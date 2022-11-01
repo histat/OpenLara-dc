@@ -1,6 +1,6 @@
 OPTIMISE = -ffast-math -mpretend-cmove -fno-stack-protector
 
-#DEBUG = 0
+DEBUG = 0
 
 CC = $(KOS_CC)
 CXX = $(KOS_CXX) 
@@ -58,7 +58,7 @@ run: $(TARGET)
 	$(KOS_LOADER) -x $< -i DATA.ISO
 
 distclean:
-	$(RM) *.ISO *.CDI *.BIN *.elf *.iso ip.txt 1ST_READ.BIN
+	$(RM) *.CDI *.BIN *.elf ip.txt 1ST_READ.BIN
 
 emu:
 	/mnt/c/opt/demul/demul.exe -run=dc -image=TEST.CDI
@@ -68,20 +68,6 @@ data:
 
 iso:
 	mkdcdisc -e $(TARGET) -d $(HOME)/data/DATA -d $(HOME)/data/DELDATA -n "Openlara" -a "histat" -N -o TEST.CDI
-
-dist: 1ST_READ.BIN IP.BIN
-
-OLDC.BIN: $(TARGET)
-	sh-elf-objcopy -S -R .stack -O binary $< $@
-
-1ST_READ.BIN: OLDC.BIN
-	scramble $< $@
-
-ip.txt: ip.txt.in
-	sed -e 's/[@]DATE[@]/$(shell date '+%Y%m%d')/' < $< > $@ 
-
-IP.BIN: ip.txt
-	makeip ip.txt IP.BIN
 
 banner_data:
 	echo 'static unsigned char banner_data[] = {' >> $@.tmp
