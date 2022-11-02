@@ -1,12 +1,11 @@
 #include <memory.h>
 #include <math.h>
 #include "audio.h"
-//#include "naomi/system.h"
-//#include "naomi/thread.h"
 #include "aica/common.h"
-//#include "irqinternal.h"
 #include <kos/mutex.h>
 
+#include <stdio.h>
+#include <stdarg.h>
 #include <stdint.h>
 
 // Constants that relate to the entire system (SH-4 specific).
@@ -19,6 +18,22 @@
 
 void _irq_display_invariant(char *msg, char *failure, ...)
 {
+#ifndef NOSERIAL
+        static char exception_buffer[128];
+	sprintf(exception_buffer, "INVARIANT VIOLATION: %s", msg);
+	puts(exception_buffer);
+
+	va_list args;
+	va_start(args, failure);
+	int length = vsnprintf(exception_buffer, 128, failure, args);
+	va_end(args);
+
+	if (length > 0)
+	{
+	  exception_buffer[length < 128 ? length : 128] = 0;
+	  puts(exception_buffer);
+	}
+#endif
 }
 
 
@@ -178,16 +193,18 @@ uint32_t __audio_exchange_command(uint32_t command, uint32_t param1, uint32_t pa
 
 void _audio_init()
 {
-  int ret = mutex_init(&g2bus_mutex, MUTEX_TYPE_RECURSIVE);
+    int ret = mutex_init(&g2bus_mutex, MUTEX_TYPE_RECURSIVE);
 
-  if(ret != 0) {
-    printf("mutex: init %d", ret);
-  }
+    if (ret != 0) {
+#ifndef NOSERIAL
+      printf("mutex: init %d", ret);
+#endif
+    }
 }
 
 void _audio_free()
 {
-  mutex_destroy(&g2bus_mutex);
+    mutex_destroy(&g2bus_mutex);
 }
 
 void audio_init()

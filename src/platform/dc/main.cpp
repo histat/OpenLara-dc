@@ -157,7 +157,7 @@ void osMutexUnlock(void *obj) {}
 
 #define SND_FRAME_SIZE  4
 #define SND_FRAMES   2352
-Sound::Frame     sndBuf[SND_FRAMES] __attribute__((aligned(2)));
+Sound::Frame sndBuf[SND_FRAMES] __attribute__((aligned(2)));
 
 static kthread_t * sndthd = NULL;
 
@@ -185,9 +185,10 @@ static void* sndFill(void *arg) {
 }
 
 void sndFree() {
-  audio_unregister_ringbuffer();
 
   thd_destroy(sndthd);
+
+  audio_unregister_ringbuffer();
 }
 
 // timing

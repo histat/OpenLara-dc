@@ -126,8 +126,7 @@ int  arch_auto_init() {
     irq_init();         /* IRQs */
     irq_disable();          /* Turn on exceptions */
 
-    if(!(__kos_init_flags & INIT_NO_DCLOAD))
-        fs_dcload_init_console();   /* Init dc-load console, if applicable */
+    fs_dcload_init_console();   /* Init dc-load console, if applicable */
 
     /* Init SCIF for debug stuff (maybe) */
     scif_init();
@@ -156,27 +155,23 @@ int  arch_auto_init() {
     nmmgr_init();
 
     fs_init();          /* VFS */
-    //fs_ramdisk_init();      /* Ramdisk */
-    //fs_romdisk_init();      /* Romdisk */
 
     hardware_periph_init();     /* DC peripheral init */
 
-    if(!(__kos_init_flags & INIT_NO_DCLOAD) && *DCLOADMAGICADDR == DCLOADMAGICVALUE) {
+    if(*DCLOADMAGICADDR == DCLOADMAGICVALUE) {
+#ifndef NOSERIAL
         dbglog(DBG_INFO, "dc-load console support enabled\n");
+#endif
         fs_dcload_init();
     }
 
     fs_iso9660_init();
 
     vmufs_init();
-    //fs_vmu_init();
 
     /* Now comes the optional stuff */
-    if(__kos_init_flags & INIT_IRQ) {
-        irq_enable();       /* Turn on IRQs */
-        maple_wait_scan();  /* Wait for the maple scan to complete */
-    }
-
+    irq_enable();       /* Turn on IRQs */
+    maple_wait_scan();  /* Wait for the maple scan to complete */
 
     return 0;
 }
@@ -190,11 +185,8 @@ void  arch_auto_shutdown() {
     pvr_shutdown();
     //library_shutdown();
     fs_dcload_shutdown();
-    //fs_vmu_shutdown();
     vmufs_shutdown();
     fs_iso9660_shutdown();
-    //fs_ramdisk_shutdown();
-    //fs_romdisk_shutdown();
     fs_shutdown();
     thd_shutdown();
     rtc_shutdown();
