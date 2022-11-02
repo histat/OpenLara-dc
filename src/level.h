@@ -957,6 +957,10 @@ struct Level : IGame {
         GAPI::freeEDRAM();
     #endif
 
+    #ifdef _GAPI_TA
+        GAPI::freeVRAM();
+    #endif
+
         nextLevel = TR::LVL_MAX;
         showStats = false;
 
