@@ -209,7 +209,11 @@ void dc_init_hardware()
     0	//autosort disable
   };
 
+#ifndef NOSERIAL
   wdInit();
+#endif
+
+  sh4SetFPSCR(0x00040001);
 
   xmtrxSetStackPointer(mtrx_stack, sizeof(mtrx_stack));
 
@@ -244,7 +248,9 @@ void dc_init_hardware()
   primitive_buffer_init(2, &prim_buffer[256 * 1024 * 0], 256 * 1024 * 2);
   primitive_buffer_init(4, &prim_buffer[256 * 1024 * 1], 256 * 1024 * 2);
 
+#ifndef NOSERIAL
   wdPause();
+#endif
   LaunchMenu();
 }
 
