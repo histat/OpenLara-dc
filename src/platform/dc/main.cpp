@@ -157,7 +157,7 @@ void osMutexUnlock(void *obj) {}
 
 #define SND_FRAME_SIZE  4
 #define SND_FRAMES   2352
-Sound::Frame sndBuf[SND_FRAMES] __attribute__((aligned(2)));
+Sound::Frame sndBuf[SND_FRAMES + 32] __attribute__((aligned(2)));
 
 static kthread_t * sndthd = NULL;
 
@@ -311,8 +311,7 @@ void osReadSlot(Stream *stream) {
   if (stream->callback)
     stream->callback(new Stream(stream->name, data, len), stream->userData);
 
-  if (buf)
-    free(buf);
+  free(buf);
 
   delete[] data;
   delete stream;
@@ -323,9 +322,7 @@ void osWriteSlot(Stream *stream) {
   maple_device_t *dev;
   int free_bytes;
   vmu_pkg_t   pkg;
-  int hdr_size;
-  //uint8 *buf;
-  uint8 *data;
+  uint8 *buf;
   int bufSize;
   int ret;
   char filename[64];
@@ -335,7 +332,6 @@ void osWriteSlot(Stream *stream) {
   dev = maple_enum_type(0, MAPLE_FUNC_MEMCARD);
 
   if (dev) {
-    
     free_bytes = vmufs_free_blocks(dev);
   }
 
@@ -363,14 +359,13 @@ void osWriteSlot(Stream *stream) {
   pkg.icon_data =  lara_icon + 32;
   pkg.eyecatch_data = NULL;
 
-  hdr_size = sizeof(struct vmu_hdr) + 512;
   pkg.data = (const uint8*)stream->data;
 
   pkg.data_len = stream->size;
 
-  ret = vmu_pkg_build(&pkg, (uint8 **)&data, &bufSize);
+  ret = vmu_pkg_build(&pkg, &buf, &bufSize);
+
   if (ret < 0) {
-    free(data);
     if (stream->callback)
       stream->callback(NULL, stream->userData);
 
@@ -378,8 +373,9 @@ void osWriteSlot(Stream *stream) {
     return;
   }
 
-  vmufs_write(dev, stream->name, data, bufSize, VMUFS_OVERWRITE);
-  free(data);
+  vmufs_write(dev, stream->name, buf, bufSize, VMUFS_OVERWRITE);
+
+  free(buf);
 
   if (stream->callback)
     stream->callback(new Stream(stream->name, stream->data, stream->size), stream->userData);
