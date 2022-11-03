@@ -313,7 +313,6 @@ void osReadSlot(Stream *stream) {
 
   free(buf);
 
-  delete[] data;
   delete stream;
 }
 
