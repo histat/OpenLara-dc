@@ -2090,12 +2090,24 @@ public:
                 return;
             }
         #endif
+        #ifdef _OS_DC
+            if (name && strcmp(name, "settings") == 0) {
+                osReadSlot(stream);
+                return;
+            }
+        #endif
         osCacheRead(stream);
     }
 
     static void cacheWrite(const char *name, const char *data, int size, Callback *callback = NULL, void *userData = NULL) {
         Stream *stream = new Stream(name, data, size, callback, userData);
         #ifdef _OS_ANDROID // use saveDir for settings on android devices
+            if (name && strcmp(name, "settings") == 0) {
+                osWriteSlot(stream);
+                return;
+            }
+        #endif
+        #ifdef _OS_DC
             if (name && strcmp(name, "settings") == 0) {
                 osWriteSlot(stream);
                 return;

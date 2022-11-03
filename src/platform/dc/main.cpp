@@ -207,8 +207,8 @@ int osGetTimeMS() {
 void osCacheWrite(Stream *stream) {
     LOG("cache write : %s\n", stream->name);
 
-  if (stream->callback)    
-        stream->callback(new Stream(stream->name, stream->data, stream->size), stream->userData);
+    if (stream->callback)
+        stream->callback(NULL, stream->userData);
     delete stream;
 }
 
@@ -216,7 +216,7 @@ void osCacheRead(Stream *stream) {
     LOG("cache read : %s\n", stream->name);
 
     if (stream->callback)
-      stream->callback(NULL, stream->userData);
+        stream->callback(NULL, stream->userData);
     delete stream;
 }
 
