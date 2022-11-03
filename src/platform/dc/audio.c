@@ -193,7 +193,7 @@ uint32_t __audio_exchange_command(uint32_t command, uint32_t param1, uint32_t pa
 
 void _audio_init()
 {
-    int ret = mutex_init(&g2bus_mutex, MUTEX_TYPE_RECURSIVE);
+    int ret = mutex_init(&g2bus_mutex, MUTEX_TYPE_NORMAL);
 
     if (ret != 0) {
 #ifndef NOSERIAL
