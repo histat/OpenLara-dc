@@ -134,11 +134,6 @@ int  arch_auto_init() {
     /* Init debug IO */
     dbgio_init();
 
-    /* Print a banner */
-    #ifdef NOSERIAL
-    dbgio_disable();
-    #endif
-
     timer_init();           /* Timers */
     hardware_sys_init();        /* DC low-level hardware init */
 
@@ -162,7 +157,7 @@ int  arch_auto_init() {
 #ifndef NOSERIAL
         dbglog(DBG_INFO, "dc-load console support enabled\n");
 #endif
-        fs_dcload_init();
+        //fs_dcload_init();
     }
 
     fs_iso9660_init();
@@ -184,7 +179,7 @@ void  arch_auto_shutdown() {
     hardware_shutdown();
     pvr_shutdown();
     //library_shutdown();
-    fs_dcload_shutdown();
+    //fs_dcload_shutdown();
     vmufs_shutdown();
     fs_iso9660_shutdown();
     fs_shutdown();

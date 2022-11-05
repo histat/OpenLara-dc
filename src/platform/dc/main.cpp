@@ -370,43 +370,14 @@ static purupuru_effect_t effect;
 #define JOY_MIN_UPDATE_FX_TIME   50
 
 bool osJoyReady(int index) {
-	return joyDevice[index].dev != NULL;
+	return index == 0;
 }
 
 void rumbleInit()
 {
-	effect.duration = 0x00;
-	effect.effect2 = 0x00;
-	effect.effect1 = 0x00;
-	effect.special = PURUPURU_SPECIAL_MOTOR1;
 }
 
 void joyRumble(int index) {
-
-  //maple_device_t *dev;
-
-    JoyDevice &joy = joyDevice[index];
-    float intensity;
-    if (joy.dev && (joy.vL != joy.oL || joy.vR != joy.oR) && Core::getTime() >= joy.time) {
-      intensity = max(joy.vL, joy.vR);
-      if (intensity > 10) {
-	  effect.duration = 0xFF;
-	  effect.effect1 = PURUPURU_EFFECT1_INTENSITY(6) | PURUPURU_EFFECT1_PULSE;
-	  effect.effect2 = PURUPURU_EFFECT2_UINTENSITY(3);
-	  effect.special = PURUPURU_SPECIAL_MOTOR1;
-      } else {
-	  effect.duration = 0xFF;
-	  effect.effect1 = PURUPURU_EFFECT1_INTENSITY(2) | PURUPURU_EFFECT1_PULSE;
-	  effect.effect2 = PURUPURU_EFFECT2_UINTENSITY(2);
-	  effect.special = PURUPURU_SPECIAL_MOTOR1;
-      }
-
-      purupuru_rumble(joy.dev, &effect);
-
-      joy.oL = joy.vL;
-      joy.oR = joy.vR;
-      joy.time = Core::getTime() + JOY_MIN_UPDATE_FX_TIME;
-    }
 }
 
 void osJoyVibrate(int index, float L, float R) {
@@ -424,12 +395,16 @@ void joyUpdate() {
   maple_device_t *dev;
 
   for (int i = 0; i < INPUT_JOY_COUNT; i++) {
+
+    JoyDevice &joy = joyDevice[JoyCnt];
+
     dev = maple_enum_dev(i, 0);
+    joy.dev = dev;
 
     if (dev && (dev->info.functions & MAPLE_FUNC_CONTROLLER)) {
 
       cont_state_t *st = (cont_state_t *)maple_dev_status(dev);
-      joyDevice[JoyCnt].dev = dev;
+
 #if 0
       if (dev->info.functions & MAPLE_FUNC_LCD) {
 	vmu_draw_lcd(dev, lcd_icon);
@@ -468,14 +443,21 @@ void joyUpdate() {
       if (FABS(joy2x) < 0.2f && FABS(joy2y) < 0.2f)
 	stick = vec2(0.0f);
       Input::setJoyPos(JoyCnt, jkR, stick);
+
       JoyCnt++;
+
+      if ((joy.vL != joy.oL || joy.vR != joy.oR) && Core::getTime() >= joy.time) {
+	joy.oL = joy.vL;
+	joy.oR = joy.vR;
+	joy.time = Core::getTime() + JOY_MIN_UPDATE_FX_TIME;
+      }
     }
   }
 }
 
 #ifdef ENABLE_LANG
 int checkLanguage(int arg) {
-  uint16 id;
+  int id;
   int str = STR_LANG_EN;
 
   if (arg < 0 ) return 0;
