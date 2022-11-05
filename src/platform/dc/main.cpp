@@ -87,27 +87,6 @@ namespace DC_FLASH {
 }
 #endif
 
-namespace DC_PAD 
-{
-  enum {
-    JOY_BTN_C		= 0x01,
-    JOY_BTN_B		= 0x02,
-    JOY_BTN_A		= 0x04,
-    JOY_BTN_START	= 0x08,
-    JOY_DPAD_UP		= 0x010,
-    JOY_DPAD_DOWN	= 0x020,
-    JOY_DPAD_LEFT	= 0x040,
-    JOY_DPAD_RIGHT	= 0x080,
-    JOY_BTN_Z		= 0x100,
-    JOY_BTN_Y		= 0x200,
-    JOY_BTN_X		= 0x400,
-    JOY_BTN_D		= 0x800,
-    JOY_LTRIGGER = 0x1000,
-    JOY_RTRIGGER = 0x2000,
-  };
-  
-}
-
 // multi-threading
 #ifdef ENABLE_MUTEX
 void* osMutexInit() {
@@ -195,13 +174,7 @@ void sndFree() {
 int osStartTime = 0;
 
 int osGetTimeMS() {
-#if 0
-  timeval t;
-  gettimeofday(&t, NULL);
-  return int((t.tv_sec - osStartTime) * 1000 + t.tv_usec / 1000);
-#else
   return (int)(timer_ms_gettime64() - osStartTime);
-#endif
 }
 
 void osCacheWrite(Stream *stream) {
@@ -463,30 +436,23 @@ void joyUpdate() {
       }
 #endif
 
-      int Buttons = st->buttons & 0x0fff;
-      Buttons |= ((st->ltrig > 30) ? DC_PAD::JOY_LTRIGGER:0);
-      Buttons |= ((st->rtrig > 30) ? DC_PAD::JOY_RTRIGGER:0);
-
-      Input::setJoyDown(JoyCnt, jkUp, Buttons & DC_PAD::JOY_DPAD_UP);
-      Input::setJoyDown(JoyCnt, jkDown, Buttons & DC_PAD::JOY_DPAD_DOWN);
-      Input::setJoyDown(JoyCnt, jkLeft, Buttons & DC_PAD::JOY_DPAD_LEFT);
-      Input::setJoyDown(JoyCnt, jkRight, Buttons & DC_PAD::JOY_DPAD_RIGHT);
+      Input::setJoyDown(JoyCnt, jkUp, st->buttons & CONT_DPAD_UP);
+      Input::setJoyDown(JoyCnt, jkDown, st->buttons & CONT_DPAD_DOWN);
+      Input::setJoyDown(JoyCnt, jkLeft, st->buttons & CONT_DPAD_LEFT);
+      Input::setJoyDown(JoyCnt, jkRight, st->buttons & CONT_DPAD_RIGHT);
   
-      Input::setJoyDown(JoyCnt, jkA,  (Buttons & DC_PAD::JOY_BTN_A));
-      Input::setJoyDown(JoyCnt, jkB,  (Buttons & DC_PAD::JOY_BTN_B));
-      Input::setJoyDown(JoyCnt, jkX,  (Buttons & DC_PAD::JOY_BTN_X));
-      Input::setJoyDown(JoyCnt, jkY,  (Buttons & DC_PAD::JOY_BTN_Y));
-      Input::setJoyDown(JoyCnt, jkLB, (Buttons & DC_PAD::JOY_LTRIGGER));
-      Input::setJoyDown(JoyCnt, jkRB, (Buttons & DC_PAD::JOY_RTRIGGER));
+      Input::setJoyDown(JoyCnt, jkA,  (st->buttons & CONT_A));
+      Input::setJoyDown(JoyCnt, jkB,  (st->buttons & CONT_B));
+      Input::setJoyDown(JoyCnt, jkX,  (st->buttons & CONT_X));
+      Input::setJoyDown(JoyCnt, jkY,  (st->buttons & CONT_Y));
+      Input::setJoyDown(JoyCnt, jkLB, (st->ltrig > 30));
+      Input::setJoyDown(JoyCnt, jkRB, (st->rtrig > 30));
   
-      if ((Buttons & DC_PAD::JOY_LTRIGGER) != 0)
-	Input::setJoyDown(JoyCnt, jkStart, (Buttons & DC_PAD::JOY_BTN_START));
-      else
-	Input::setJoyDown(JoyCnt, jkSelect, (Buttons & DC_PAD::JOY_BTN_START));
-      if ((Buttons & DC_PAD::JOY_BTN_C) != 0)
-	Input::setJoyDown(JoyCnt, jkLB, (Buttons & DC_PAD::JOY_BTN_C));
-      if ((Buttons & DC_PAD::JOY_BTN_Z) != 0)
-	Input::setJoyDown(JoyCnt, jkRB, (Buttons & DC_PAD::JOY_BTN_Z));
+      Input::setJoyDown(JoyCnt, jkSelect, (st->buttons & CONT_START));
+      if ((st->buttons & CONT_C) != 0)
+	Input::setJoyDown(JoyCnt, jkLB, (st->buttons & CONT_C));
+      if ((st->buttons & CONT_Z) != 0)
+	Input::setJoyDown(JoyCnt, jkRB, (st->buttons & CONT_Z));
   
       int joyx = st->joyx+128;
       int joyy = st->joyy+128;
@@ -561,6 +527,9 @@ int main()
 #ifndef NOSERIAL
     wdResume();
 #endif
+
+    pvr_scene_begin();
+    pvr_scene_finish();
 
     while (!Core::isQuit) {
 #ifndef NOSERIAL
