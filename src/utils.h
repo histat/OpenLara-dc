@@ -2091,10 +2091,12 @@ public:
             }
         #endif
         #ifdef _OS_DC
+	    /*
             if (name && strcmp(name, "settings") == 0) {
                 osReadSlot(stream);
                 return;
             }
+	    */
         #endif
         osCacheRead(stream);
     }
@@ -2108,10 +2110,12 @@ public:
             }
         #endif
         #ifdef _OS_DC
+            /*
             if (name && strcmp(name, "settings") == 0) {
                 osWriteSlot(stream);
                 return;
             }
+	    */
         #endif
         osCacheWrite(stream);
     }
