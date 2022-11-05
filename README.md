@@ -26,6 +26,18 @@ xcopy D:\DATA\ C:\DATA\
 - cdi
     - you can burn with [Image Burn](https://www.imgburn.com/index.php?act=download)
 
+## Known Issues
+- a lot of
+
+## Build Instructions
+you'll need sdk [KallistiOS](http://gamedev.allusion.net/softprj/kos/)
+After all setting up compiler and libs
+```
+  cd src/platform/dc
+  make
+```
+
+
 ## Credits
 - XProger
 - Histat
