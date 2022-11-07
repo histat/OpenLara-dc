@@ -8,6 +8,7 @@
 
 #include <kos.h>
 #include "private.h"
+#include "audio.h"
 #include "watchdog.h"
 
 
