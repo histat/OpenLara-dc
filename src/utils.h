@@ -123,16 +123,6 @@
 #define uint32 _uint32
 #define KOS_FIX
 #endif
-#include <kos.h>
-#ifdef KOS_FIX
-#undef _int8
-#undef _int16
-#undef _int32
-#undef _uint8
-#undef _uint16
-#undef _uint32
-#undef KOS_FIX
-#endif
 #undef STATE_WAIT
 #endif
 
