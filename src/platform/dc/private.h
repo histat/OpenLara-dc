@@ -20,10 +20,7 @@ extern "C" {
 #define PVR_FGET(REG) (* ( (float*)( 0xa05f8000 + (REG) ) ) )
 #define PVR_FSET(REG, VALUE) PVR_FGET(REG) = (VALUE)
 
-
-pvr_ptr_t kos_mem_malloc(size_t size);
-
-void kos_mem_free(pvr_ptr_t chunk);
+#include "libpspvram/valloc.h"
 
 void kos_poly_compile(pvr_poly_hdr_t *dst, pvr_poly_cxt_t *src);
 

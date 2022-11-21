@@ -31,26 +31,6 @@ void *kospvrvramGetAddr()
   return (void *)pvr_mem_base;
 }
 
-pvr_ptr_t kos_mem_malloc(size_t size)
-{
-  void *ret = psp_valloc(size);
-
-#ifndef NOSERIAL
-  printf("[%s] tex = %p size 0x%x\n", __func__, ret, size);
-#endif
-
-  return (pvr_ptr_t)(ret);
-}
-
-void kos_mem_free(pvr_ptr_t chunk)
-{
-#ifndef NOSERIAL
-  printf("[%s] tex = %p\n", __func__, chunk);
-#endif
-  
-  psp_vfree(chunk);
-}
-
 void kos_poly_compile(pvr_poly_hdr_t *dst, pvr_poly_cxt_t *src)
 {
   int u,v;
@@ -233,10 +213,7 @@ void dc_init_hardware()
 
   PVR_FSET(0x11C, 0.5f);
   PVR_SET(0x0e4, (640 >> 5));
-
-  for (n = 0; n < 256; n++) {
-    pvr_set_pal_entry(n, (n*0x111)|0xff000000);
-  }
+  pvr_set_pal_format(PVR_PAL_ARGB1555);
 
  /* Init primitive buffer */
   primitive_buffer_init(0, 0, -1);
@@ -314,7 +291,7 @@ pvr_ptr_t setup_font_texture() {
   int x, y;
   pvr_ptr_t buffer;
 
-  buffer = kos_mem_malloc(256*256*2);
+  buffer = (pvr_ptr_t)psp_valloc( 256*256*2 );
   uint16 *vram = (uint16 *)buffer;
 
   vram = (uint16 *)buffer;
@@ -420,7 +397,7 @@ pvr_ptr_t tex_load_cd(char *filename, int *tex_w, int *tex_h, int *type)
     *tex_h = (int)header.height;
     *type = header.type;
 
-    buffer = kos_mem_malloc(header.size);
+    buffer = psp_valloc( header.size );
     read(file, buffer, header.size);
     close(file);
 
@@ -439,7 +416,7 @@ pvr_ptr_t tex_load_ram(unsigned char *in, int *tex_w, int *tex_h, int *type)
     *tex_h = (int)header.height;
     *type = header.type;
 
-    buffer = kos_mem_malloc(header.size);
+    buffer = psp_valloc( header.size );
     memcpy(buffer, in + 16, header.size);
 
     return buffer;
@@ -597,8 +574,8 @@ void LaunchMenu() {
   //pvr_scene_begin();
   //pvr_scene_finish();
   
-  kos_mem_free(banner_tex);
-  kos_mem_free(font_tex);
+  psp_vfree( (void*)banner_tex );
+  psp_vfree( (void*)font_tex );
   return;
 }
 

@@ -35,12 +35,12 @@ struct Texture : GAPI::Texture {
                 #endif
             }
         #elif defined(_GAPI_TA)
-            vqTex *tiles;
+	    Tile8 *tiles;
 
             Texture(Tile8 *tiles, int tilesCount) : GAPI::Texture(256, 256, 1, OPT_PROXY) {
-	      this->tiles = (vqTex *)GAPI::allocVRAM(tilesCount * sizeof(vqTex));
+	      this->tiles = (Tile8 *)GAPI::allocVRAM(tilesCount * sizeof(tiles[0]));
 	      for (int i = 0; i < tilesCount; i++)
-		GAPI::upload_vram((uint8*)&this->tiles[i], (uint8*)&tiles[i], width, height);
+		GAPI::twiddle((uint8*)&this->tiles[i],(uint8*)&tiles[i], width, height, 8);
             }
         #else
             Texture *tiles[32];

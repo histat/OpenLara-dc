@@ -53,13 +53,20 @@ namespace GAPI {
     pvr_ptr_t pvr_base_mem;
 
     pvr_ptr_t allocVRAM(unsigned int size) {
-      pvr_base_mem = kos_mem_malloc(size);
+      pvr_base_mem = (pvr_ptr_t)psp_valloc( size );
+#ifndef NOSERIAL
+      printf("[%s] tex = %p size 0x%x\n", __func__, pvr_base_mem, size);
+#endif
       return pvr_base_mem;
     }
 
     void freeVRAM() {
-      if (pvr_base_mem != NULL)
-        kos_mem_free(pvr_base_mem);
+      if (pvr_base_mem != NULL) {
+	psp_vfree( (void*)pvr_base_mem );
+#ifndef NOSERIAL
+      printf("[%s] tex = %p size 0x%x\n", __func__, pvr_base_mem, size);
+#endif
+      }
 
       pvr_base_mem = NULL;
     }
@@ -142,7 +149,7 @@ namespace GAPI {
     static const struct FormatDesc {
       int bpp, textureFormat;
     } formats[FMT_MAX] = {
-      {  8, PVR_TXRFMT_PAL8BPP|PVR_TXRFMT_8BPP_PAL(0)}, // LUMINANCE
+      {  8, PVR_TXRFMT_ARGB4444|PVR_TXRFMT_NONTWIDDLED}, // LUMINANCE
       { 32, PVR_TXRFMT_ARGB1555|PVR_TXRFMT_NONTWIDDLED}, // RGBA
       { 16, PVR_TXRFMT_RGB565|PVR_TXRFMT_NONTWIDDLED}, // RGB16
       { 16, PVR_TXRFMT_ARGB1555|PVR_TXRFMT_NONTWIDDLED}, // RGBA16
@@ -154,7 +161,7 @@ namespace GAPI {
 
     #define ARGB1555(r,g,b,a)	( (((r)>>3)<<10) | (((g)>>3)<<5) |((b)>>3) | (((a)&0x80)<<8) )
     #define ARGB8888(r,g,b,a)	( ((a) << 24) | ((r)<<16) | ((g)<<8) | (b) )
-    #define LUMINANCE(a)	(a)
+    #define LUMINANCE(a)	((((a)>>4)*0x111)|0xf0e0)
 
 
 #define TWIDTAB(x) ( (x&1)|((x&2)<<1)|((x&4)<<2)|((x&8)<<3)|((x&16)<<4)| \
@@ -239,30 +246,32 @@ namespace GAPI {
 
         cnt >>= 6;
 
+	asm("pref @%0" : : "r" (s));
+
         while (cnt--) {
-	        d[0] = *s++;
-	        d[1] = *s++;
-	        d[2] = *s++;
-	        d[3] = *s++;
-            __asm__("pref @%0" : : "r" (s+8));
-	        d[4] = *s++;
-	        d[5] = *s++;
-	        d[6] = *s++;
-	        d[7] = *s++;
-	        __asm__("pref @%0" : : "r" (d));
-	        d += 8;
-	        d[0] = *s++;
-	        d[1] = *s++;
-	        d[2] = *s++;
-	        d[3] = *s++;
-            __asm__("pref @%0" : : "r" (s+8));
-	        d[4] = *s++;
-	        d[5] = *s++;
-	        d[6] = *s++;
-	        d[7] = *s++;
-	        __asm__("pref @%0" : : "r" (d));
-	        d += 8;
-	    }
+	  asm("pref @%0" : : "r" (s+8));
+	  d[0] = *s++;
+	  d[1] = *s++;
+	  d[2] = *s++;
+	  d[3] = *s++;
+	  d[4] = *s++;
+	  d[5] = *s++;
+	  d[6] = *s++;
+	  d[7] = *s++;
+	  asm("pref @%0" : : "r" (d));
+	  d += 8;
+	  asm("pref @%0" : : "r" (s+8));
+	  d[0] = *s++;
+	  d[1] = *s++;
+	  d[2] = *s++;
+	  d[3] = *s++;
+	  d[4] = *s++;
+	  d[5] = *s++;
+	  d[6] = *s++;
+	  d[7] = *s++;
+	  asm("pref @%0" : : "r" (d));
+	  d += 8;
+	}
     }
 
     #define COPY8888TO16(n) do {	\
@@ -333,13 +342,12 @@ namespace GAPI {
 
             int size = 0;
 
-	    if (desc.bpp == 8) {
-	      size = width * height * 1;
-	    } else {
-	      size = width * height * 2;
-	    }
+	    size = width * height * 2;
 
-            memory = kos_mem_malloc(size);
+            memory = (pvr_ptr_t)psp_valloc( size );
+#ifndef NOSERIAL
+	    printf("[%s] tex = %p size 0x%x\n", __func__, memory, size);
+#endif
 
             if (memory == NULL) {
 	          LOG("Unable to create %dx%dx 0x%x \n", width, height, size);
@@ -352,7 +360,10 @@ namespace GAPI {
 
         void deinit() {
             if (memory) {
-                kos_mem_free(memory);
+		psp_vfree( (void*)memory );
+#ifndef NOSERIAL
+      printf("[%s] tex = %p size 0x%x\n", __func__, pvr_base_mem, size);
+#endif
                 memory = NULL;
             }
         }
@@ -365,10 +376,13 @@ namespace GAPI {
 
             FormatDesc desc = formats[fmt];
             if (desc.bpp == 8) {
-    	      //int n = origWidth * origHeight;
+              int n = origWidth * origHeight;
 	      uint8 *dst = (uint8 *)memory;
 	      uint8 *src = (uint8 *)data;
-	      twiddle(dst, src, origWidth, origHeight, 8);
+	      while(n--) {
+		uint8 c = *src++;
+		*dst++ = LUMINANCE(c);
+	      }
             } else if (desc.bpp == 16) {
                 uint16 *dst = (uint16 *)memory;
                 uint16 *src = (uint16 *)data;
@@ -434,26 +448,11 @@ namespace GAPI {
 		}
 	}
 
-        typedef struct {
-    	    uint16 color[256 * 4];
-            Tile8 tile;
-	    } vqTex;
-
-        void bindTileIndices(vqTex *tile) {
-	    uint16 *color = (uint16 *)tile;
-            ColorSW *pal = swPaletteColor;
-	        for (int i = 0; i < 256; i++) {
-                uint16 argb1555 = pal[i];
-                color[i*4 + 0] = argb1555;
-                color[i*4 + 1] = argb1555;
-                color[i*4 + 2] = argb1555;
-                color[i*4 + 3] = argb1555;
-            }
-
-            m_PvrContext.txr.width = width * 4;
+        void bindTileIndices(void *tile) {
+            m_PvrContext.txr.width = width;
 	    m_PvrContext.txr.height = height;
 	    m_PvrContext.txr.base = (pvr_ptr_t)tile;
-            m_PvrContext.txr.format = PVR_TXRFMT_ARGB1555 | PVR_TXRFMT_NONTWIDDLED | PVR_TXRFMT_VQ_ENABLE;
+            m_PvrContext.txr.format = PVR_TXRFMT_PAL8BPP|PVR_TXRFMT_8BPP_PAL(0);
         }
 
         void unbind(int sampler) {}
@@ -893,11 +892,15 @@ namespace GAPI {
             const Color24 &p = palette[i];
             if ( i == 0 ) {
               swPaletteColor[i] = 0;
-              continue;
+	      continue;
             }
 
             swPaletteColor[i] = CONV_COLOR(p.r, p.g, p.b);
         }
+
+	for (uint32 i = 0; i < 256; i++) {
+	  pvr_set_pal_entry(i, swPaletteColor[i]);
+	}
     }
 
     void setPalette(int flag) {
