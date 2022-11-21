@@ -165,11 +165,24 @@ void sndInit() {
 }
 
 static void* sndFill(void *arg) {
+    (void)arg;
     while (1) {
+      uint32_t *samples = (uint32_t *)sndBuf;
       Sound::fill(sndBuf, SND_FRAMES);
-      audio_write_stereo_data(sndBuf, SND_FRAMES);
 
-      thd_sleep(20);
+      int numsamples = SND_FRAMES;
+
+      while (numsamples > 0) {
+	unsigned int actual_written = audio_write_stereo_data(samples, numsamples);
+
+	if (actual_written < numsamples) {
+	  numsamples -= actual_written;
+	  samples += actual_written;
+	  thd_sleep(10);
+	} else {
+	  numsamples = 0;
+	}
+      }
     }
     return NULL;
 }
