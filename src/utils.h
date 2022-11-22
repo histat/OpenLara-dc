@@ -114,6 +114,7 @@
 #define randf() (float(rand())/float(RAND_MAX))
 
 #ifdef _OS_DC
+
 #ifndef KOS_FIX
 #define int8 _int8
 #define int16 _int16
@@ -123,7 +124,9 @@
 #define uint32 _uint32
 #define KOS_FIX
 #endif
+
 #undef STATE_WAIT
+
 #endif
 
 typedef signed char        int8;

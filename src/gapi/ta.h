@@ -198,80 +198,42 @@ namespace GAPI {
 #undef TWIDOUT
 #undef MIN
 
-    void upload_vram(uint8 *out, const uint8 *in, uint32 w, uint32 h) {
-	    uint8 *dst = out + 2048;
-	    uint32 *s = (uint32 *)in;
-	    uint32 *d = (uint32 *)(void *)				\
-	        (0xe0000000 | (((unsigned long)dst) & 0x03ffffc0));
-
-	    volatile unsigned int *qacr = (volatile unsigned int *)0xff000038;
-	    qacr[0] = qacr[1] = 0xa4;
-	
-	    int cnt = w * h;
-        cnt >>= 6;
-
-    	while (cnt--) {
-	        d[0] = *s++;
-	        d[1] = *s++;
-	        d[2] = *s++;
-	        d[3] = *s++;
-            __asm__("pref @%0" : : "r" (s+8));
-	        d[4] = *s++;
-	        d[5] = *s++;
-	        d[6] = *s++;
-	        d[7] = *s++;
-	        __asm__("pref @%0" : : "r" (d));
-	        d += 8;
-	        d[0] = *s++;
-	        d[1] = *s++;
-	        d[2] = *s++;
-	        d[3] = *s++;
-            __asm__("pref @%0" : : "r" (s+8));
-	        d[4] = *s++;
-	        d[5] = *s++;
-	        d[6] = *s++;
-	        d[7] = *s++;
-	        __asm__("pref @%0" : : "r" (d));
-	        d += 8;
-	    }
-    }
-
     void tex_memcpy(void *dest, void *src, uint32 cnt) {
-	    uint32 *s = (uint32 *)src;
-	    uint32 *d = (uint32 *)(void *)				\
-	        (0xe0000000 | (((unsigned long)dest) & 0x03ffffc0));
+      uint32 *s = (uint32 *)src;
+      uint32 *d = (uint32 *)(void *)					\
+	(0xe0000000 | (((unsigned long)dest) & 0x03ffffc0));
 
-	    volatile unsigned int *qacr = (volatile unsigned int *)0xff000038;
-	    qacr[0] = qacr[1] = 0xa4;
+      volatile unsigned int *qacr = (volatile unsigned int *)0xff000038;
+      qacr[0] = qacr[1] = 0xa4;
 
-        cnt >>= 6;
+      cnt >>= 6;
 
-	asm("pref @%0" : : "r" (s));
+      asm("pref @%0" : : "r" (s));
 
-        while (cnt--) {
-	  asm("pref @%0" : : "r" (s+8));
-	  d[0] = *s++;
-	  d[1] = *s++;
-	  d[2] = *s++;
-	  d[3] = *s++;
-	  d[4] = *s++;
-	  d[5] = *s++;
-	  d[6] = *s++;
-	  d[7] = *s++;
-	  asm("pref @%0" : : "r" (d));
-	  d += 8;
-	  asm("pref @%0" : : "r" (s+8));
-	  d[0] = *s++;
-	  d[1] = *s++;
-	  d[2] = *s++;
-	  d[3] = *s++;
-	  d[4] = *s++;
-	  d[5] = *s++;
-	  d[6] = *s++;
-	  d[7] = *s++;
-	  asm("pref @%0" : : "r" (d));
-	  d += 8;
-	}
+      while (cnt--) {
+	asm("pref @%0" : : "r" (s+8));
+	d[0] = *s++;
+	d[1] = *s++;
+	d[2] = *s++;
+	d[3] = *s++;
+	d[4] = *s++;
+	d[5] = *s++;
+	d[6] = *s++;
+	d[7] = *s++;
+	asm("pref @%0" : : "r" (d));
+	d += 8;
+	asm("pref @%0" : : "r" (s+8));
+	d[0] = *s++;
+	d[1] = *s++;
+	d[2] = *s++;
+	d[3] = *s++;
+	d[4] = *s++;
+	d[5] = *s++;
+	d[6] = *s++;
+	d[7] = *s++;
+	asm("pref @%0" : : "r" (d));
+	d += 8;
+      }
     }
 
     #define COPY8888TO16(n) do {	\
@@ -282,40 +244,42 @@ namespace GAPI {
     } while(0)
 
     void tex_memcpy_pal(void *dest, void *src, uint32 cnt) {
-        unsigned char *s = (unsigned char *)src;
-        unsigned int *d = (unsigned int *)(void *)              \
-          (0xe0000000 | (((unsigned long)dest) & 0x03ffffc0));
+      unsigned char *s = (unsigned char *)src;
+      unsigned int *d = (unsigned int *)(void *)		\
+	(0xe0000000 | (((unsigned long)dest) & 0x03ffffc0));
 
-	    volatile unsigned int *qacr = (volatile unsigned int *)0xff000038;
-	    qacr[0] = qacr[1] = 0xa4;
+      volatile unsigned int *qacr = (volatile unsigned int *)0xff000038;
+      qacr[0] = qacr[1] = 0xa4;
 
-	    uint32 tmp;
-	    cnt >>= 5;
-	
-        while (cnt--) {
-          COPY8888TO16(0);
-          COPY8888TO16(1);
-          COPY8888TO16(2);
-          COPY8888TO16(3);
-	        __asm__("pref @%0" : : "r" (s+16*8));
-          COPY8888TO16(4);
-          COPY8888TO16(5);
-          COPY8888TO16(6);
-          COPY8888TO16(7);
-          __asm__("pref @%0" : : "r" (d));
-          d += 8;
-          COPY8888TO16(0);
-          COPY8888TO16(1);
-          COPY8888TO16(2);
-          COPY8888TO16(3);
-	        __asm__("pref @%0" : : "r" (s+16*8));
-          COPY8888TO16(4);
-          COPY8888TO16(5);
-          COPY8888TO16(6);
-          COPY8888TO16(7);
-            __asm__("pref @%0" : : "r" (d));
-          d += 8;
-        }
+      uint32 tmp;
+      cnt >>= 5;
+
+      asm("pref @%0" : : "r" (s));
+
+      while (cnt--) {
+	asm("pref @%0" : : "r" (s+8*8));
+	COPY8888TO16(0);
+	COPY8888TO16(1);
+	COPY8888TO16(2);
+	COPY8888TO16(3);
+	COPY8888TO16(4);
+	COPY8888TO16(5);
+	COPY8888TO16(6);
+	COPY8888TO16(7);
+	asm("pref @%0" : : "r" (d));
+	d += 8;
+	asm("pref @%0" : : "r" (s+8*8));
+	COPY8888TO16(0);
+	COPY8888TO16(1);
+	COPY8888TO16(2);
+	COPY8888TO16(3);
+	COPY8888TO16(4);
+	COPY8888TO16(5);
+	COPY8888TO16(6);
+	COPY8888TO16(7);
+	asm("pref @%0" : : "r" (d));
+	d += 8;
+      }
     }
 
 

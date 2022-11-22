@@ -6,6 +6,9 @@
 #include "game.h"
 #include "icon_data_2bpp.h"
 
+
+#define KOS_FIX
+
 #ifdef KOS_FIX
 #undef int8
 #undef int16
