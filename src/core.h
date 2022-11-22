@@ -222,7 +222,6 @@
 
     #define INV_SINGLE_PLAYER
     #define INV_GAMEPAD_ONLY
-    #include <kos.h>
 
     #undef OS_FILEIO_CACHE
     #undef OS_PTHREAD_MT

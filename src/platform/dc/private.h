@@ -5,11 +5,10 @@
 extern "C" {
 #endif
 
-#include <stdint.h>
-
+#include <kos.h>
 #include "pvr_cxt.h"
-
 #include "sh4_math.h"
+#include "libpspvram/valloc.h"
 
 #define FABS(x) MATH_fabs(x)
 #define SQRT(x) MATH_Fast_Sqrt(x)
@@ -20,7 +19,6 @@ extern "C" {
 #define PVR_FGET(REG) (* ( (float*)( 0xa05f8000 + (REG) ) ) )
 #define PVR_FSET(REG, VALUE) PVR_FGET(REG) = (VALUE)
 
-#include "libpspvram/valloc.h"
 
 void kos_poly_compile(pvr_poly_hdr_t *dst, pvr_poly_cxt_t *src);
 

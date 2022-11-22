@@ -6,20 +6,6 @@
 #include "game.h"
 #include "icon_data_2bpp.h"
 
-
-#define KOS_FIX
-
-#ifdef KOS_FIX
-#undef int8
-#undef int16
-#undef int32
-#undef uint8
-#undef uint16
-#undef uint32
-#undef KOS_FIX
-#endif
-
-#include <kos.h>
 #include "private.h"
 #include "audio.h"
 #include "watchdog.h"
