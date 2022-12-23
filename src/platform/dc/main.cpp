@@ -161,13 +161,15 @@ static void* sndFill(void *arg) {
 
       int numsamples = SND_FRAMES;
 
+      int sleep_ms = (int)(1000.0 * ((float)SND_FRAMES / (float)SAMPLERATE) * (1.0 / 4.0));
+
       while (numsamples > 0) {
 	unsigned int actual_written = audio_write_stereo_data(samples, numsamples);
 
 	if (actual_written < numsamples) {
 	  numsamples -= actual_written;
 	  samples += actual_written;
-	  thd_sleep(10);
+	  thd_sleep(sleep_ms);
 	} else {
 	  numsamples = 0;
 	}
@@ -519,6 +521,10 @@ int main()
     //Game::init("DATA/LEVEL1.PHD");
     //Game::init("DATA/LEVEL2.PHD");
     //Game::init("DATA/GYM.PHD");
+#ifdef DEMO
+    Game::init("DATA/LEVEL2.PHD");
+#endif
+
 #ifndef NOSERIAL
     wdResume();
 #endif
