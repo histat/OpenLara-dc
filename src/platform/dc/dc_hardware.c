@@ -174,8 +174,6 @@ xMatrix mtrx_stack[4];
 
 void dc_init_hardware()
 {
-  int n;
-
   pvr_init_params_t pvr_params = {
     { PVR_BINSIZE_16, PVR_BINSIZE_0, PVR_BINSIZE_16, PVR_BINSIZE_0, PVR_BINSIZE_16 },
     (int)(512 * 1024),
@@ -200,7 +198,6 @@ void dc_init_hardware()
   pvr_init (&pvr_params);
   
   pvr_mem_base = (pvr_ptr_t)(PVR_RAM_INT_BASE + pvr_state.texture_base);
-  //pvr_mem_base = 0xa4000000;
 #ifndef NOSERIAL
   printf("reset pvr_mem_base at 0x%4x ", pvr_mem_base);
 #endif
@@ -219,6 +216,9 @@ void dc_init_hardware()
   primitive_buffer_init(0, 0, -1);
   primitive_buffer_init(2, &prim_buffer[256 * 1024 * 0], 256 * 1024 * 1);
   primitive_buffer_init(4, &prim_buffer[256 * 1024 * 1], 256 * 1024 * 3);
+
+
+  arch_set_exit_path(ARCH_EXIT_MENU);
 
 #ifndef NOSERIAL
   wdPause();
