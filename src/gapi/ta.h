@@ -26,8 +26,7 @@ namespace GAPI {
     typedef uint16 ColorSW;
     ColorSW swPaletteColor[256];
 
-    xMatrix ScreenView;
-    xMatrix ViewProj;
+    xMatrix Matrix[4];
 
     enum {
       PaletteColor,
@@ -48,6 +47,7 @@ namespace GAPI {
      vec3 intensity;
      vec3  pos;
      float att;
+     float radius;
    } lights[MAX_LIGHTS];
 
     pvr_ptr_t pvr_base_mem;
@@ -489,7 +489,6 @@ namespace GAPI {
 	m_PvrContext.gen.fog_type = PVR_FOG_VERTEX;
 	#ifdef ENABLE_FOG
         FogParams = 0.0f;
-	PVR_SET(0x0B4, PVR_PACK_COLOR(0, 0, 0, 0));
         #endif
     }
 
@@ -538,7 +537,7 @@ namespace GAPI {
 
        m.viewport((float)v.x, (float)v.y+v.w, (float)v.z, -(float)v.w, 0.0f, 1.0f);
        xmtrxLoadUnaligned((float*)&m);
-       xmtrxStoreUnaligned((float*)&ScreenView);
+       xmtrxStore(&Matrix[0]);
 
       //xmtrxPrintLn();
     }
@@ -602,14 +601,16 @@ namespace GAPI {
     void setViewProj(const mat4 &mView, const mat4 &mProj) {
 
       xmtrxLoadUnaligned((float*)&mProj);
-      xmtrxMultiplyUnaligned((float*)&mView);
-      xmtrxStoreUnaligned((float*)&ViewProj);
+      xmtrxStore(&Matrix[1]);
+
+      xmtrxLoadUnaligned((float*)&mView);
+      xmtrxStore(&Matrix[2]);
+
     }
 
     void updateLights(vec4 *lightPos, vec4 *lightColor, int count) {
 
       ambient = vec3(Core::active.material.y);
-      //ambient = Core::active.material.xyz();
 
       lightsCount = 0;
       for (int i = 0; i < count; i++) {
@@ -619,7 +620,7 @@ namespace GAPI {
 	LightPVR &light = lights[lightsCount++];
 	light.intensity = lightColor[i].xyz();
 	light.pos   = lightPos[i].xyz();
-	light.att   = lightColor[i].w * lightColor[i].w;
+	light.radius = lightColor[i].w;
       }
     }
 
@@ -633,15 +634,15 @@ namespace GAPI {
                 | (uint32(clamp(params.x * 255.0f, 0.0f, 255.0f)) << 0)
                 | (uint32(clamp(params.y * 255.0f, 0.0f, 255.0f)) << 8)
                 | (uint32(clamp(params.z * 255.0f, 0.0f, 255.0f)) << 16);
-		//PVR_SET(0x0B4, fogColor);
+		PVR_SET(0x0B4, fogColor);
         }
         #endif
     }
 
-    uint32 applyLighting(const Vertex &vertex, ubyte4 argb) {
+    uint32 applyLighting(const Vertex &vertex, ubyte4 argb, vec3 amb) {
       //ubyte4 argb = vertex.color;
       vec3 result = vec3(0.0f);
-      uint32 R, G, B, A;
+      int C[4];
 
       vec3 coord  = vec3(float(vertex.coord.x), float(vertex.coord.y), float(vertex.coord.z));
       vec3 normal = vec3(float(vertex.normal.x), float(vertex.normal.y), float(vertex.normal.z));
@@ -649,41 +650,41 @@ namespace GAPI {
 
       for (int i = 0; i < lightsCount; i++) {
 	LightPVR &light = lights[i];
-	vec3 color = light.intensity;
+	vec3 pos;
 
-	vec3 L = light.pos - coord;
-	vec3f_normalize(L.x, L.y, L.z);
+	float x, y, z;
+	pos.x = light.pos.x;
+	pos.y = light.pos.y;
+	pos.z = light.pos.z;
+
+	mat_trans_single3_nodiv(pos.x, pos.y, pos.z);
+
+	vec3 dir = (pos - coord) * light.radius;
+
+	float att;
+	vec3f_dot(dir.x, dir.y, dir.z, dir.x, dir.y, dir.z, att);
+
+	float lum;
+	dir.x /= SQRT(att);
+	dir.y /= SQRT(att);
+	dir.z /= SQRT(att);
+	vec3f_dot(normal.x, normal.y, normal.z, dir.x, dir.y, dir.z, lum);
 	
-	float D;
-	vec3 dis = light.pos - coord;
-	vec3f_length(dis.x, dis.y, dis.z, D);
-
-	// I = 1 / kc + kl + kq
-	// kc = 1.0
-	// kl = 0.0
-	// kq = quadratic * d^2
-	//float att = 1.0f / (1.0f + light.att * SQRT(D));
-	float att = (1.0f + light.att * SQRT(D));
-	att = INVERT(att);
-
-	float LdotN;
-	vec3f_dot(normal.x, normal.y, normal.z, L.x, L.y, L.z, LdotN);
-
-	float strength = max(0.0f, LdotN);
-	vec3 amb = ambient;
-
-	vec3 diffuse = color * strength;
-	diffuse *= att;
-	amb *= att;
-	result += (amb + diffuse);
+	result += light.intensity * (max(0.0f, lum) * max(0.0f, 1.0f - att));
       }
 
-      R = clamp(int(result.x * argb.x), 0, 255);
-      G = clamp(int(result.y * argb.y), 0, 255);
-      B = clamp(int(result.z * argb.z), 0, 255);
-      A = argb.w;
+      result += amb;
 
-      return ARGB8888( R, G, B, A);
+      C[0] = (result.x * argb.x) > 255 ? 255 : (result.x * argb.x);
+      C[1] = (result.y * argb.y) > 255 ? 255 : (result.y * argb.y);
+      C[2] = (result.z * argb.z) > 255 ? 255 : (result.z * argb.z);
+      C[3] = 255;
+
+      if(C[0] < 0) C[0] = 255;
+      if(C[1] < 0) C[1] = 255;
+      if(C[2] < 0) C[2] = 255;
+
+      return ARGB8888(C[0], C[1], C[2], C[3]);
     }
 
     void transform(const Index *indices, const Vertex *vertices, int iStart, int iCount, int vStart) {
@@ -809,16 +810,22 @@ namespace GAPI {
 	    }
 
 	    if (lightsCount) {
-	      argb = applyLighting(vertex[i], color);
+
+	      xmtrxPush();
+	      xmtrxLoad(&Matrix[3]);
+	      argb = applyLighting(vertex[i], color, ambient);
+	      xmtrxPop();
+
 	    } else {
 	      if(c.z == 1.0f) {
-		color = vertex[i].light;
+		//color = vertex[i].light;
 	      }
 	      argb = ARGB8888(color.x, color.y, color.z, color.w);
 	    }
 
 #ifdef ENABLE_FOG
-            if (FogParams > 0.0f) {
+	    unsigned int *list = (unsigned int *)&dst;
+	    if (FogParams > 0.0f && ((list[0] >> 24) & 0x07) == 0) {
 	      float depth = c.w;
 	      
 	      float alpha = clamp(depth * FogParams, 0.0f, 1.0f);
@@ -844,10 +851,18 @@ namespace GAPI {
 
     void DIP(Mesh *mesh, const MeshRange &range) {
 
-      xmtrxLoadUnaligned((float*)&ScreenView);
-      xmtrxMultiplyUnaligned((float*)&ViewProj);
-      xmtrxMultiplyUnaligned((float*)&mModel);
+      mat4 m;
+      m = mModel.inverseOrtho();
       
+      xmtrxLoadUnaligned((float*)&m);
+      xmtrxStore(&Matrix[3]);
+
+      xmtrxLoad(&Matrix[0]);
+      xmtrxMultiply(&Matrix[1]);
+      xmtrxMultiply(&Matrix[2]);
+
+      xmtrxMultiplyUnaligned((float*)&mModel);
+
       transform(mesh->iBuffer, mesh->vBuffer, range.iStart, range.iCount, range.vStart);
     }
 
