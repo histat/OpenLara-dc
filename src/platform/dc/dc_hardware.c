@@ -186,8 +186,6 @@ void dc_init_hardware()
   wdInit();
 #endif
 
-  sh4SetFPSCR(0x00040001);
-
   xmtrxSetStackPointer(mtrx_stack, sizeof(mtrx_stack));
 
   _audio_init();
