@@ -208,7 +208,6 @@ void dc_init_hardware()
 
   PVR_FSET(0x11C, 0.5f);
   PVR_SET(0x0e4, (640 >> 5));
-  pvr_set_pal_format(PVR_PAL_ARGB1555);
 
  /* Init primitive buffer */
   primitive_buffer_init(0, 0, -1);

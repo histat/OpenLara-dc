@@ -11,11 +11,20 @@
 #define PROFILE_LABEL(id, name, label)
 #define PROFILE_TIMING(time)
 
+#define COLOR_16
+
 #define ENABLE_FOG
 
 #define INV_SHORT_HALF      (1.0 / 32767.0)
 
+#ifdef COLOR_16
 #define CONV_COLOR(r,g,b) (((r >> 3) << 10) | ((g >> 3) << 5) | (b >> 3) | (1 << 15))
+#else
+#define CONV_COLOR(r,g,b) ((r << 16) | (g << 8) | b | (255 << 24))
+#endif
+
+#define SW_MAX_DIST  (20.0f * 1024.0f)
+#define SW_FOG_START (12.0f * 1024.0f)
 
 namespace GAPI {
 
@@ -23,7 +32,11 @@ namespace GAPI {
 
     typedef ::Vertex Vertex;
 
-    typedef uint16 ColorSW;
+    #ifdef COLOR_16
+        typedef uint16 ColorSW;
+    #else
+        typedef uint32 ColorSW;
+    #endif
     ColorSW swPaletteColor[256];
 
     xMatrix Matrix[4];
@@ -149,7 +162,7 @@ namespace GAPI {
     static const struct FormatDesc {
       int bpp, textureFormat;
     } formats[FMT_MAX] = {
-      {  8, PVR_TXRFMT_ARGB4444|PVR_TXRFMT_NONTWIDDLED}, // LUMINANCE
+      {  8, PVR_TXRFMT_PAL8BPP|PVR_TXRFMT_8BPP_PAL(1)}, // LUMINANCE
       { 32, PVR_TXRFMT_ARGB1555|PVR_TXRFMT_NONTWIDDLED}, // RGBA
       { 16, PVR_TXRFMT_RGB565|PVR_TXRFMT_NONTWIDDLED}, // RGB16
       { 16, PVR_TXRFMT_ARGB1555|PVR_TXRFMT_NONTWIDDLED}, // RGBA16
@@ -306,7 +319,11 @@ namespace GAPI {
 
             int size = 0;
 
-	    size = width * height * 2;
+	    if (desc.bpp == 8) {
+	      size = width * height;
+	    } else {
+	      size = width * height * 2;
+	    }
 
             memory = (pvr_ptr_t)psp_valloc( size );
 #ifndef NOSERIAL
@@ -340,13 +357,18 @@ namespace GAPI {
 
             FormatDesc desc = formats[fmt];
             if (desc.bpp == 8) {
-              int n = origWidth * origHeight;
 	      uint8 *dst = (uint8 *)memory;
+	      uint8 *src = (uint8 *)data;
+	      twiddle(dst, src, origWidth, origHeight, 8);
+	      /*
+	      int n = origWidth * origHeight;
+	      uint16 *dst = (uint16 *)memory;
 	      uint8 *src = (uint8 *)data;
 	      while(n--) {
 		uint8 c = *src++;
 		*dst++ = LUMINANCE(c);
 	      }
+	      */
             } else if (desc.bpp == 16) {
                 uint16 *dst = (uint16 *)memory;
                 uint16 *src = (uint16 *)data;
@@ -480,6 +502,12 @@ namespace GAPI {
         LOG("Version  : %s\n", "0.1");
 
         support.texMinSize  = 8;
+
+#ifdef COLOR_16
+	pvr_set_pal_format(PVR_PAL_ARGB1555);
+#else
+	pvr_set_pal_format(PVR_PAL_ARGB8888);
+#endif
 
         pvr_base_mem = NULL;
 
@@ -628,7 +656,7 @@ namespace GAPI {
         #ifdef ENABLE_FOG
         FogParams = params.w;
 
-	uint32 fogColor = 0x00000000;
+	uint32 fogColor = 0;
         if (params.w > 0.0f) {
 	        fogColor = 0x00000000
                 | (uint32(clamp(params.x * 255.0f, 0.0f, 255.0f)) << 0)
@@ -639,10 +667,8 @@ namespace GAPI {
         #endif
     }
 
-    uint32 applyLighting(const Vertex &vertex, ubyte4 argb, vec3 amb) {
+    void applyLighting(vec3 &result, const Vertex &vertex) {
       //ubyte4 argb = vertex.color;
-      vec3 result = vec3(0.0f);
-      int C[4];
 
       vec3 coord  = vec3(float(vertex.coord.x), float(vertex.coord.y), float(vertex.coord.z));
       vec3 normal = vec3(float(vertex.normal.x), float(vertex.normal.y), float(vertex.normal.z));
@@ -665,26 +691,12 @@ namespace GAPI {
 	vec3f_dot(dir.x, dir.y, dir.z, dir.x, dir.y, dir.z, att);
 
 	float lum;
-	dir.x /= SQRT(att);
-	dir.y /= SQRT(att);
-	dir.z /= SQRT(att);
+	dir /= SQRT(att);
 	vec3f_dot(normal.x, normal.y, normal.z, dir.x, dir.y, dir.z, lum);
 	
 	result += light.intensity * (max(0.0f, lum) * max(0.0f, 1.0f - att));
       }
 
-      result += amb;
-
-      C[0] = (result.x * argb.x) > 255 ? 255 : (result.x * argb.x);
-      C[1] = (result.y * argb.y) > 255 ? 255 : (result.y * argb.y);
-      C[2] = (result.z * argb.z) > 255 ? 255 : (result.z * argb.z);
-      C[3] = 255;
-
-      if(C[0] < 0) C[0] = 255;
-      if(C[1] < 0) C[1] = 255;
-      if(C[2] < 0) C[2] = 255;
-
-      return ARGB8888(C[0], C[1], C[2], C[3]);
     }
 
     void transform(const Index *indices, const Vertex *vertices, int iStart, int iCount, int vStart) {
@@ -774,7 +786,6 @@ namespace GAPI {
 	  primitive_header((void *)&dst, 32);
 
 	  unsigned int argb, oargb;
-	  packed_color_t tmp;
 	  
 	  for (int i=0; i<vcount; i++) {
 
@@ -796,9 +807,11 @@ namespace GAPI {
 	    //xmtrxPop();
 
 	    ubyte4 color;
-	    
-	    if(colored) {
-	      color = vertex[i].color;
+	    if (colored) {
+	      color.x = uint32(vertex[i].color.x * vertex[i].light.x) >> 8;
+	      color.y = uint32(vertex[i].color.y * vertex[i].light.y) >> 8;
+	      color.z = uint32(vertex[i].color.z * vertex[i].light.z) >> 8;
+	      color.w = uint32(vertex[i].color.w * vertex[i].light.w) >> 8;
 	    } else {
 	      color = vertex[i].light;
 	    }
@@ -809,27 +822,42 @@ namespace GAPI {
 	      color.z = (uint32(color.z) * 230) >> 8;
 	    }
 
+	    int C[4];
+	    vec3 result = vec3(0.0f);
+
 	    if (lightsCount) {
 
 	      xmtrxPush();
 	      xmtrxLoad(&Matrix[3]);
-	      argb = applyLighting(vertex[i], color, ambient);
+	      applyLighting(result, vertex[i]);
 	      xmtrxPop();
 
+	      result += ambient;
+
+	      C[0] = clamp(int(result.x * color.x), 0, 255);
+	      C[1] = clamp(int(result.y * color.y), 0, 255);
+	      C[2] = clamp(int(result.z * color.z), 0, 255);
+	      C[3] = color.w;
+
+	      argb = ARGB8888(C[0], C[1], C[2], C[3]);
+
 	    } else {
-	      if(c.z == 1.0f) {
-		//color = vertex[i].light;
-	      }
+
 	      argb = ARGB8888(color.x, color.y, color.z, color.w);
+
 	    }
 
 #ifdef ENABLE_FOG
+	    float depth = c.w;
+	    depth -= SW_FOG_START;
+
 	    unsigned int *list = (unsigned int *)&dst;
-	    if (FogParams > 0.0f && ((list[0] >> 24) & 0x07) == 0) {
-	      float depth = c.w;
-	      
-	      float alpha = clamp(depth * FogParams, 0.0f, 1.0f);
-	      oargb = int(alpha * 255) << 24;
+
+	    //if (FogParams > 0.0f && ((list[0] >> 24) & 0x07) == 0) {
+	    if (depth > 0.0f && ((list[0] >> 24) & 0x07) == 0) {
+	      int alpha = 0;
+	      alpha = clamp(int(depth * FogParams * 255), 0, 255);
+	      oargb = alpha << 24;
             } else
 #endif
 	    oargb = 0;
@@ -880,6 +908,15 @@ namespace GAPI {
 	for (uint32 i = 0; i < 256; i++) {
 	  pvr_set_pal_entry(i, swPaletteColor[i]);
 	}
+
+	for (uint32 i = 0; i < 256; i++) {
+#ifdef COLOR_16
+	  pvr_set_pal_entry(i+256, ((i>>3)*0x421)|0x8000);
+#else
+	  pvr_set_pal_entry(i+256, ((i)*0x111)|0xff000000);
+#endif
+	}
+
     }
 
     void setPalette(int flag) {
