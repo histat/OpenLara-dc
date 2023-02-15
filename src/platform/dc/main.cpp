@@ -1,7 +1,6 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include <sys/time.h>
 
 #include "game.h"
 #include "icon_data_2bpp.h"
@@ -10,85 +9,29 @@
 #include "audio.h"
 #include "watchdog.h"
 
+#define ENABLE_MUTEX
 
 #ifdef ENABLE_LANG
 namespace DC_FLASH {
 
-  int syscall_info_flash(int sect, int *info)
-  {
-    return (*(int (**)(int, void*, int, int))0x8c0000b8)(sect,info,0,0);  
-  }
+int GetLocalLanguage() {
 
-  int syscall_read_flash(int offs, void *buf, int cnt)
-  {
-    return (*(int (**)(int, void*, int, int))0x8c0000b8)(offs,buf,cnt,1);
-  }
+  flashrom_syscfg_t data;
 
-  int flash_crc(const char *buf, int size)
-  {
-    int i, c, n = -1;
-    for(i=0; i<size; i++) {
-      n ^= (buf[i]<<8);
-      for(c=0; c<8; c++)
-	if(n & 0x8000)
-	  n = (n << 1) ^ 4129;
-	else
-	  n <<= 1;
-    }
-    return (unsigned short)~n;
-  }
-
-  int flash_read_sector(int partition, int sec, char *dst)
-  {
-    int s, r, n, b, bmb, got=0;
-    int info[2];
-    char buf[64];
-    char bm[64];
-
-    if((r = syscall_info_flash(partition, info))<0)
-      return r;
-    
-    if((r = syscall_read_flash(info[0], buf, 64))<0)
-      return r;
-
-    if(memcmp(buf, "KATANA_FLASH", 12) ||
-       buf[16] != partition || buf[17] != 0)
-      return -2;
-
-    n = (info[1]>>6)-1-((info[1] + 0x7fff)>>15);
-    bmb = n+1;
-    for(b = 0; b < n; b++) {
-      if(!(b&511)) {
-	if((r = syscall_read_flash(info[0] + (bmb++ << 6), bm, 64))<0)
-	  return r;
-      }
-      if(!(bm[(b>>3)&63] & (0x80>>(b&7))))
-	if((r = syscall_read_flash(info[0] + ((b+1) << 6), buf, 64))<0)
-	  return r;
-	else if((s=*(unsigned short *)(buf+0)) == sec &&
-		flash_crc(buf, 62) == *(unsigned short *)(buf+62)) {
-	  memcpy(dst+(s-sec)*60, buf+2, 60);
-	  got=1;
-	}
-    }
-
-    return got;
-  }
-
-  int GetLocalLanguage() {
-
-    char data[60];
-    if (flash_read_sector(2, 5, data) == 1)
-      return data[5];
-    else 
-      return -1;
-  }
+  if (flashrom_get_syscfg(&data) == 0)
+    return data.language;
+  else
+    return -1;
+}
 
 }
+
 #endif
+
 
 // multi-threading
 #ifdef ENABLE_MUTEX
+
 void* osMutexInit() {
   mutex_t *mutex;
   mutex = (mutex_t *)malloc(sizeof(mutex_t));
@@ -99,7 +42,7 @@ void* osMutexInit() {
 
   int ret = mutex_init(mutex, MUTEX_TYPE_RECURSIVE);
   if(ret != 0) {
-    LOG("mutex: init %d", ret);
+    LOG("mutex: init");
     return NULL;
   }
 
@@ -114,10 +57,16 @@ void osMutexFree(void *obj) {
 
 void osMutexLock(void *obj) {
   int ret = mutex_lock((mutex_t *)obj);
+  if(ret != 0) {
+    LOG("mutex lock");
+  }
 }
 
 void osMutexUnlock(void *obj) {
   int ret = mutex_unlock((mutex_t *)obj);
+  if(ret != 0) {
+    LOG("mutex unlock");
+  }
 }
 #else
 
@@ -131,6 +80,31 @@ void osMutexLock(void *obj) {}
 
 void osMutexUnlock(void *obj) {}
 #endif
+
+void* osRWLockInit() {
+    return osMutexInit();
+}
+
+void osRWLockFree(void *obj) {
+    osMutexFree(obj);
+}
+
+void osRWLockRead(void *obj) {
+    osMutexLock(obj);
+}
+
+void osRWUnlockRead(void *obj) {
+    osMutexUnlock(obj);
+}
+
+void osRWLockWrite(void *obj) {
+    osMutexLock(obj);
+}
+
+void osRWUnlockWrite(void *obj) {
+    osMutexUnlock(obj);
+}
+
 
 #define SAMPLERATE 44100
 
@@ -381,11 +355,13 @@ struct JoyDevice {
     float             oL, oR;
 } joyDevice[INPUT_JOY_COUNT];
 
+static int JoyCnt = 0;
+
 static purupuru_effect_t effect;
 #define JOY_MIN_UPDATE_FX_TIME   50
 
 bool osJoyReady(int index) {
-	return index == 0;
+     return index == 0;
 }
 
 void rumbleInit()
@@ -406,8 +382,9 @@ void joyInit()
 
 void joyUpdate() {
 
-  int JoyCnt = 0;
   maple_device_t *dev;
+
+  JoyCnt = 0;
 
   for (int i = 0; i < INPUT_JOY_COUNT; i++) {
 
@@ -516,13 +493,10 @@ int main()
     Core::width  = 640;
     Core::height = 480;
 
-    Game::init();
-
-    //Game::init("DATA/LEVEL1.PHD");
-    //Game::init("DATA/LEVEL2.PHD");
-    //Game::init("DATA/GYM.PHD");
 #ifdef DEMO
     Game::init("DATA/LEVEL2.PHD");
+#else
+    Game::init();
 #endif
 
 #ifndef NOSERIAL
