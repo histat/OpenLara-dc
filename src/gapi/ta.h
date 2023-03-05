@@ -23,8 +23,15 @@
 #define CONV_COLOR(r,g,b) ((r << 16) | (g << 8) | b | (255 << 24))
 #endif
 
+#ifdef COLOR_16
+#define CONV_LUMINANCE(a) (((a>>3)*0x421)|0x8000)
+#else
+#define CONV_LUMINANCE(a) (((a)*0x111)|0xff000000)
+#endif
+
 #define SW_MAX_DIST  (20.0f * 1024.0f)
 #define SW_FOG_START (12.0f * 1024.0f)
+#define WATER_FOG_DIST (6.0f * 1024.0f)
 
 namespace GAPI {
 
@@ -94,8 +101,7 @@ namespace GAPI {
     int CullMode;
     int AlphaBlendSrc;
     int AlphaBlendDst;
-
-    
+    vec3 clearColor;
 
     enum {
         FALSE = false,
@@ -411,7 +417,7 @@ namespace GAPI {
             ASSERT(memory);
 
             FormatDesc desc = formats[fmt];
-	  
+
 	        if (opt & OPT_REPEAT) {
 	            m_PvrContext.txr.uv_clamp = PVR_UVCLAMP_NONE;
 	        } else {
@@ -513,9 +519,9 @@ namespace GAPI {
 
         pvr_poly_cxt_txr(&m_PvrContext, PVR_LIST_OP_POLY, PVR_TXRFMT_ARGB1555, 8, 8, 0, 0);
 
+	#ifdef ENABLE_FOG
         m_PvrContext.gen.specular = 1;
 	m_PvrContext.gen.fog_type = PVR_FOG_VERTEX;
-	#ifdef ENABLE_FOG
         FogParams = 0.0f;
         #endif
     }
@@ -556,9 +562,17 @@ namespace GAPI {
 
     void waitVBlank() {}
 
-    void clear(bool color, bool depth) {}
+    void clear(bool color, bool depth) {
+      if (color) {
+	pvr_set_bg_color(clearColor.x, clearColor.y, clearColor.z);
+      }
+    }
 
-    void setClearColor(const vec4 &color) {}
+    void setClearColor(const vec4 &color) {
+      clearColor.x = color.x;
+      clearColor.y = color.y;
+      clearColor.z = color.z;
+    }
 
     void setViewport(const short4 &v) {
        mat4 m;
@@ -567,7 +581,6 @@ namespace GAPI {
        xmtrxLoadUnaligned((float*)&m);
        xmtrxStore(&Matrix[0]);
 
-      //xmtrxPrintLn();
     }
 
     void setScissor(const short4 &s) {
@@ -633,7 +646,6 @@ namespace GAPI {
 
       xmtrxLoadUnaligned((float*)&mView);
       xmtrxStore(&Matrix[2]);
-
     }
 
     void updateLights(vec4 *lightPos, vec4 *lightColor, int count) {
@@ -699,7 +711,7 @@ namespace GAPI {
 
     }
 
-    void transform(const Index *indices, const Vertex *vertices, int iStart, int iCount, int vStart) {
+  void transform(int iCount, const Index *indices, const Vertex *vertices) {
 
 	#define vec4f_ftrv(x, y, z, w) {       \
         register float __x __asm__("fr0") = x; \
@@ -727,24 +739,20 @@ namespace GAPI {
 
 	pc_copy((const pvr_context *)&hdr, &dst);
 
-        //int vIndex = 0;
-        //bool isTriangle = false;
-        //int vcount = 0;
-	//Index index[4];
 	Vertex vertex[6];
 	int face_list[7];
 
         for (int i = 0; i < iCount;) {
 	  
 	  Index index[6];
-	  int vcount = 0;
+	  int vcount;
 
-	  index[0]   = indices[iStart + i + 0];
-	  index[1]   = indices[iStart + i + 1];
-	  index[2]   = indices[iStart + i + 2];
-	  vertex[0] = vertices[vStart + index[0]];
-	  vertex[1] = vertices[vStart + index[1]];
-	  vertex[2] = vertices[vStart + index[2]];
+	  index[0]   = indices[i + 0];
+	  index[1]   = indices[i + 1];
+	  index[2]   = indices[i + 2];
+	  vertex[0] = vertices[index[0]];
+	  vertex[1] = vertices[index[1]];
+	  vertex[2] = vertices[index[2]];
 
 	  bool colored = false;
 
@@ -761,8 +769,8 @@ namespace GAPI {
 	    colored = vertex[1].texCoord.y == 0;
 	  } else {
 
-	    index[3]   = indices[iStart + i + 5];
-	    vertex[3] = vertices[vStart + index[3]];
+	    index[3]   = indices[i + 5];
+	    vertex[3] = vertices[index[3]];
 
 	    i += 6;
 	    vcount = 4;
@@ -793,20 +801,19 @@ namespace GAPI {
 	    #if 0
 	    mat_trans_single3_nomod(vertex[i].coord.x, vertex[i].coord.y, vertex[i].coord.z, c.x, c.y, c.z);
 	    #else
+	    xmtrxPeek();
+
 	    c = vec4(vertex[i].coord.x, vertex[i].coord.y, vertex[i].coord.z, 1.0f);
 	    vec4f_ftrv(c.x, c.y, c.z, c.w);
 	    #endif
 
-	    //xmtrxPush();
-	    //xmtrxIdentity();
-	    //xmtrxScale(INV_SHORT_HALF, INV_SHORT_HALF, 1.0);
-	    vec2 uv = vec2(vertex[i].texCoord.x * INV_SHORT_HALF, vertex[i].texCoord.y * INV_SHORT_HALF);
-	    //vec2 uv = vec2(vertex[i].texCoord.x, vertex[i].texCoord.y);
-	    //mat_trans_2d_single(uv.x, uv.y);
+	    vec2 uv = vec2(vertex[i].texCoord.x, vertex[i].texCoord.y) * INV_SHORT_HALF;
 
-	    //xmtrxPop();
+	    float depth = c.w;
 
 	    ubyte4 color;
+	    int C[4];
+
 	    if (colored) {
 	      color.x = uint32(vertex[i].color.x * vertex[i].light.x) >> 8;
 	      color.y = uint32(vertex[i].color.y * vertex[i].light.y) >> 8;
@@ -814,47 +821,52 @@ namespace GAPI {
 	      color.w = uint32(vertex[i].color.w * vertex[i].light.w) >> 8;
 	    } else {
 	      color = vertex[i].light;
+	      /*
+	      color.x = vertex[i].light.x;
+	      color.y = vertex[i].light.y;
+	      color.z = vertex[i].light.z;
+	      color.w = vertex[i].light.w;
+	      */
 	    }
 
 	    if (PaletteFlag == PaletteWater) {
 	      color.x = (uint32(color.x) * 150) >> 8;
 	      color.y = (uint32(color.y) * 230) >> 8;
 	      color.z = (uint32(color.z) * 230) >> 8;
+
+	      depth -= WATER_FOG_DIST;
+	    } else {
+	      depth -= SW_FOG_START;
 	    }
 
-	    int C[4];
 	    vec3 result = vec3(0.0f);
 
 	    if (lightsCount) {
-
-	      xmtrxPush();
 	      xmtrxLoad(&Matrix[3]);
 	      applyLighting(result, vertex[i]);
-	      xmtrxPop();
-
-	      result += ambient;
-
-	      C[0] = clamp(int(result.x * color.x), 0, 255);
-	      C[1] = clamp(int(result.y * color.y), 0, 255);
-	      C[2] = clamp(int(result.z * color.z), 0, 255);
-	      C[3] = color.w;
-
-	      argb = ARGB8888(C[0], C[1], C[2], C[3]);
-
-	    } else {
-
-	      argb = ARGB8888(color.x, color.y, color.z, color.w);
-
 	    }
 
-#ifdef ENABLE_FOG
-	    float depth = c.w;
-	    depth -= SW_FOG_START;
+	    result += ambient;
 
+	    C[0] = int(result.x * color.x);
+	    C[1] = int(result.y * color.y);
+	    C[2] = int(result.z * color.z);
+	    C[3] = color.w;
+
+	    C[0] = C[0] > 255 ? 255 : C[0];
+	    C[1] = C[1] > 255 ? 255 : C[1];
+	    C[2] = C[2] > 255 ? 255 : C[2];
+
+	    C[0] = C[0] < 0 ? color.x : C[0];
+	    C[1] = C[1] < 0 ? color.y : C[1];
+	    C[2] = C[2] < 0 ? color.z : C[2];
+
+	    argb = ARGB8888(C[0], C[1], C[2], C[3]);
+
+#ifdef ENABLE_FOG
 	    unsigned int *list = (unsigned int *)&dst;
 
-	    //if (FogParams > 0.0f && ((list[0] >> 24) & 0x07) == 0) {
-	    if (depth > 0.0f && ((list[0] >> 24) & 0x07) == 0) {
+	    if (FogParams > 0.0f && depth > 0.0f && ((list[0] >> 24) & 0x07) == 0) {
 	      int alpha = 0;
 	      alpha = clamp(int(depth * FogParams * 255), 0, 255);
 	      oargb = alpha << 24;
@@ -888,10 +900,13 @@ namespace GAPI {
       xmtrxLoad(&Matrix[0]);
       xmtrxMultiply(&Matrix[1]);
       xmtrxMultiply(&Matrix[2]);
-
       xmtrxMultiplyUnaligned((float*)&mModel);
 
-      transform(mesh->iBuffer, mesh->vBuffer, range.iStart, range.iCount, range.vStart);
+      xmtrxPush();
+
+      transform(range.iCount, mesh->iBuffer + range.iStart, mesh->vBuffer + range.vStart);
+
+      xmtrxDrop();
     }
 
     void initPalette(Color24 *palette, uint8 *lightmap) {
@@ -910,11 +925,7 @@ namespace GAPI {
 	}
 
 	for (uint32 i = 0; i < 256; i++) {
-#ifdef COLOR_16
-	  pvr_set_pal_entry(i+256, ((i>>3)*0x421)|0x8000);
-#else
-	  pvr_set_pal_entry(i+256, ((i)*0x111)|0xff000000);
-#endif
+	  pvr_set_pal_entry(i+256, CONV_LUMINANCE(i));
 	}
 
     }
