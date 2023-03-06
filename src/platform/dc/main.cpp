@@ -513,12 +513,7 @@ int main()
       joyUpdate();
 
       if (Game::update()) {
-	pvr_wait_ready();
-	pvr_scene_begin();
-	primitive_buffer_begin();
 	Game::render();
-	primitive_buffer_flush();
-	pvr_scene_finish();
       }
     }
 

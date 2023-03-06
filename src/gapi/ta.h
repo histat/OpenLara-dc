@@ -91,16 +91,16 @@ namespace GAPI {
       pvr_base_mem = NULL;
     }
 
-    pvr_poly_cxt_t m_PvrContext;
+    pvr_context m_PvrContext;
 
     bool AlphaTestEnable;
     bool AlphaBlendEnable;
     bool DepthTestEnable;
     bool ZWriteEnable;
 
-    int CullMode;
-    int AlphaBlendSrc;
-    int AlphaBlendDst;
+    pc_culling CullMode;
+    pc_blend_mode AlphaBlendSrc;
+    pc_blend_mode AlphaBlendDst;
     vec3 clearColor;
 
     enum {
@@ -108,49 +108,38 @@ namespace GAPI {
         TRUE = true
     };
 
-    void ReCompileHeader(pvr_poly_hdr_t *dst) {
+    void ReCompileHeader(pvr_context *dst) {
 
-      //m_PvrContext.txr.enable = PVR_TEXTURE_DISABLE;
+      pc_copy(&m_PvrContext, dst);
 
-        if(AlphaBlendEnable || AlphaTestEnable) {
-	        m_PvrContext.gen.alpha = PVR_ALPHA_ENABLE;
-	        m_PvrContext.txr.alpha = PVR_TXRALPHA_ENABLE;
-	        m_PvrContext.txr.env = PVR_TXRENV_MODULATEALPHA;
+      if (AlphaBlendEnable || AlphaTestEnable) {
+	pc_set_disable_texture_alpha(dst, 0);
+	pc_set_enable_alpha(dst, 1);
 
-	        if(AlphaBlendEnable) {
-		    m_PvrContext.list_type = PVR_LIST_TR_POLY;
-	            m_PvrContext.blend.src = AlphaBlendSrc;
-	            m_PvrContext.blend.dst = AlphaBlendDst;
-	        } else {
-	            m_PvrContext.list_type = PVR_LIST_PT_POLY;
-	            m_PvrContext.blend.src = PVR_BLEND_SRCALPHA;
-	            m_PvrContext.blend.dst = PVR_BLEND_INVSRCALPHA;
-	        }
-
-	    } else {
-            m_PvrContext.list_type = PVR_LIST_OP_POLY;
-            m_PvrContext.gen.alpha = PVR_ALPHA_DISABLE;
-            m_PvrContext.blend.src = PVR_BLEND_ONE;
-	        m_PvrContext.blend.dst = PVR_BLEND_ZERO;
-            m_PvrContext.txr.alpha = PVR_TXRALPHA_DISABLE;
-            m_PvrContext.txr.env = PVR_TXRENV_MODULATE;
-        }
-
-        if (ZWriteEnable) {
-            m_PvrContext.depth.write = PVR_DEPTHWRITE_ENABLE;
-        } else {
-            m_PvrContext.depth.write = PVR_DEPTHWRITE_DISABLE;
-        }
-
-        if (DepthTestEnable) {
-	        m_PvrContext.depth.comparison = PVR_DEPTHCMP_GEQUAL;
-        } else {
-	        m_PvrContext.depth.comparison = PVR_DEPTHCMP_ALWAYS;
-        }
-
-        m_PvrContext.gen.culling = CullMode;
-
-        kos_poly_compile(dst, &m_PvrContext);
+	if (AlphaBlendEnable) {
+	  pc_set_list(dst, PC_BLEND_POLY);
+	  pc_set_blend_modes(dst, AlphaBlendSrc, AlphaBlendDst);
+	} else {
+	  pc_set_list(dst, PC_PUNCHTHROUGH);
+	  pc_set_blend_modes(dst, PC_SRC_ALPHA, PC_INV_SRC_ALPHA);
+	}
+      } else {
+	pc_set_list(dst, PC_OPAQUE_POLY);
+	pc_set_blend_modes(dst, PC_ONE, PC_ZERO);
+	pc_set_enable_alpha(dst, 0);
+	pc_set_disable_texture_alpha(dst, 1);
+      }
+      if (ZWriteEnable) {
+	pc_set_depth_write_disable(dst, 0);
+      } else {
+	pc_set_depth_write_disable(dst, 1);
+      }
+      if (DepthTestEnable) {
+	pc_set_depth_compare(dst, PC_GEQUAL);
+      } else {
+	pc_set_depth_compare(dst, PC_ALWAYS);
+      }
+      pc_set_cull_mode(dst, CullMode);
     }
 
 
@@ -166,16 +155,17 @@ namespace GAPI {
 
 // Texture
     static const struct FormatDesc {
-      int bpp, textureFormat;
+      int bpp;
+      pc_texture_format textureFormat;
     } formats[FMT_MAX] = {
-      {  8, PVR_TXRFMT_PAL8BPP|PVR_TXRFMT_8BPP_PAL(1)}, // LUMINANCE
-      { 32, PVR_TXRFMT_ARGB1555|PVR_TXRFMT_NONTWIDDLED}, // RGBA
-      { 16, PVR_TXRFMT_RGB565|PVR_TXRFMT_NONTWIDDLED}, // RGB16
-      { 16, PVR_TXRFMT_ARGB1555|PVR_TXRFMT_NONTWIDDLED}, // RGBA16
-      { 32, PVR_TXRFMT_ARGB1555|PVR_TXRFMT_NONTWIDDLED}, // RG_FLOAT
-      { 32, PVR_TXRFMT_ARGB1555|PVR_TXRFMT_NONTWIDDLED}, // RG_HALF
-      { 32, PVR_TXRFMT_ARGB1555|PVR_TXRFMT_NONTWIDDLED}, // DEPTH
-      { 32, PVR_TXRFMT_ARGB1555|PVR_TXRFMT_NONTWIDDLED}, // SHADOW
+      {  8, PC_ARGB4444}, // LUMINANCE
+      { 32, PC_ARGB1555}, // RGBA
+      { 16, PC_RGB565}, // RGB16
+      { 16, PC_ARGB1555}, // RGBA16
+      { 32, PC_PALETTE_8B}, // RG_FLOAT
+      { 32, PC_PALETTE_8B}, // RG_HALF
+      { 32, PC_PALETTE_8B}, // DEPTH
+      { 32, PC_PALETTE_8B}, // SHADOW
     };
 
     #define ARGB1555(r,g,b,a)	( (((r)>>3)<<10) | (((g)>>3)<<5) |((b)>>3) | (((a)&0x80)<<8) )
@@ -323,13 +313,7 @@ namespace GAPI {
 
 	    LOG("%dx%d orig %dx%d fmt=%d \n",width, height, origWidth,origHeight, fmt);
 
-            int size = 0;
-
-	    if (desc.bpp == 8) {
-	      size = width * height;
-	    } else {
-	      size = width * height * 2;
-	    }
+	    int size = width * height * 2;
 
             memory = (pvr_ptr_t)psp_valloc( size );
 #ifndef NOSERIAL
@@ -363,10 +347,6 @@ namespace GAPI {
 
             FormatDesc desc = formats[fmt];
             if (desc.bpp == 8) {
-	      uint8 *dst = (uint8 *)memory;
-	      uint8 *src = (uint8 *)data;
-	      twiddle(dst, src, origWidth, origHeight, 8);
-	      /*
 	      int n = origWidth * origHeight;
 	      uint16 *dst = (uint16 *)memory;
 	      uint8 *src = (uint8 *)data;
@@ -374,7 +354,6 @@ namespace GAPI {
 		uint8 c = *src++;
 		*dst++ = LUMINANCE(c);
 	      }
-	      */
             } else if (desc.bpp == 16) {
                 uint16 *dst = (uint16 *)memory;
                 uint16 *src = (uint16 *)data;
@@ -417,34 +396,40 @@ namespace GAPI {
             ASSERT(memory);
 
             FormatDesc desc = formats[fmt];
+	    pvr_context *dst = &m_PvrContext;
 
 	        if (opt & OPT_REPEAT) {
-	            m_PvrContext.txr.uv_clamp = PVR_UVCLAMP_NONE;
+		  pc_set_uv_clamp(dst, PC_UV_NONE);
 	        } else {
-	            m_PvrContext.txr.uv_clamp = PVR_UVCLAMP_UV;
+		  pc_set_uv_clamp(dst, PC_UV_XY);
 	        }
 
 	        if (opt & OPT_NEAREST) {
-	            m_PvrContext.txr.filter = PVR_FILTER_NEAREST;
+		  pc_set_filter(dst, PC_POINT);
 	        } else {
-	            m_PvrContext.txr.filter = PVR_FILTER_BILINEAR;
+		  pc_set_anisotropic(dst, 1);
+		  pc_set_filter(dst, PC_BILINEAR);
 	        }
 
-	        m_PvrContext.txr.width = width;
-	        m_PvrContext.txr.height = height;
-	        m_PvrContext.txr.base = memory;
-	        m_PvrContext.txr.format = desc.textureFormat;
+		pc_texture_size u,v;
+		u = pc_convert_size(width);
+		v = pc_convert_size(height);
 
 		if (width == 640) {
-		  m_PvrContext.txr.format |= PVR_TXRFMT_STRIDE;
+		  pc_set_strided(dst, 1);
 		}
+
+		pc_set_texture(dst, memory, u, v, desc.textureFormat, 0, 0, 0);
 	}
 
         void bindTileIndices(void *tile) {
-            m_PvrContext.txr.width = width;
-	    m_PvrContext.txr.height = height;
-	    m_PvrContext.txr.base = (pvr_ptr_t)tile;
-            m_PvrContext.txr.format = PVR_TXRFMT_PAL8BPP|PVR_TXRFMT_8BPP_PAL(0);
+	    pc_texture_size u,v;
+	    pvr_context *dst = &m_PvrContext;
+
+	    u = pc_convert_size(width);
+	    v = pc_convert_size(height);
+	    pc_set_palette_8bit(dst, 0);
+	    pc_set_texture(dst, tile, u, v, PC_PALETTE_8B, 1, 0, 0);
         }
 
         void unbind(int sampler) {}
@@ -517,11 +502,12 @@ namespace GAPI {
 
         pvr_base_mem = NULL;
 
-        pvr_poly_cxt_txr(&m_PvrContext, PVR_LIST_OP_POLY, PVR_TXRFMT_ARGB1555, 8, 8, 0, 0);
+	pc_set_default_polygon(&m_PvrContext);
+	pc_set_color_format(&m_PvrContext, PC_PACKED);
 
 	#ifdef ENABLE_FOG
-        m_PvrContext.gen.specular = 1;
-	m_PvrContext.gen.fog_type = PVR_FOG_VERTEX;
+	pc_set_specular(&m_PvrContext, 1);
+	pc_set_fog_mode(&m_PvrContext, PC_FOG_VERTEX);
         FogParams = 0.0f;
         #endif
     }
@@ -545,10 +531,16 @@ namespace GAPI {
     }
 
     bool beginFrame() {
-        return true;
+      pvr_wait_ready();
+      pvr_scene_begin();
+      primitive_buffer_begin();
+      return true;
     }
 
-    void endFrame() {}
+    void endFrame() {
+      primitive_buffer_flush();
+      pvr_scene_finish();
+    }
 
     void resetState() {}
 
@@ -606,9 +598,9 @@ namespace GAPI {
     void setCullMode(int rsMask) {
         cullMode = rsMask;
         switch (rsMask) {
-            case RS_CULL_BACK  : CullMode = PVR_CULLING_CW;  break;
-            case RS_CULL_FRONT : CullMode = PVR_CULLING_CCW; break;
-            default            : CullMode = PVR_CULLING_NONE;
+            case RS_CULL_BACK  : CullMode = PC_CULL_CW;  break;
+            case RS_CULL_FRONT : CullMode = PC_CULL_CCW; break;
+            default            : CullMode = PC_CULL_DISABLE;
         }
     }
 
@@ -617,20 +609,20 @@ namespace GAPI {
         blendMode = rsMask;
         switch (rsMask) {
             case RS_BLEND_ALPHA: 
-                AlphaBlendSrc = PVR_BLEND_SRCALPHA;
-                AlphaBlendDst = PVR_BLEND_INVSRCALPHA;
+                AlphaBlendSrc = PC_SRC_ALPHA;
+                AlphaBlendDst = PC_INV_SRC_ALPHA;
                 break;
             case RS_BLEND_ADD:
-                AlphaBlendSrc = PVR_BLEND_ONE;
-                AlphaBlendDst = PVR_BLEND_ONE;
+                AlphaBlendSrc = PC_ONE;
+                AlphaBlendDst = PC_ONE;
                 break;
             case RS_BLEND_MULT:
-                AlphaBlendSrc = PVR_BLEND_DESTCOLOR;
-                AlphaBlendDst = PVR_BLEND_ZERO;
+                AlphaBlendSrc = PC_OTHER_COLOR;
+                AlphaBlendDst = PC_ZERO;
                 break;
             case RS_BLEND_PREMULT :
-                AlphaBlendSrc = PVR_BLEND_ONE;
-                AlphaBlendDst = PVR_BLEND_INVSRCALPHA;
+                AlphaBlendSrc = PC_ONE;
+                AlphaBlendDst = PC_INV_SRC_ALPHA;
                 break;
             default:
                 AlphaBlendEnable = FALSE;
@@ -734,10 +726,7 @@ namespace GAPI {
 
 	pvr_context dst;
 
-	pvr_poly_hdr_t hdr;
-	ReCompileHeader(&hdr);
-
-	pc_copy((const pvr_context *)&hdr, &dst);
+	ReCompileHeader(&dst);
 
 	Vertex vertex[6];
 	int face_list[7];
