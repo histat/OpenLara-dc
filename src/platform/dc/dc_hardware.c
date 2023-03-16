@@ -31,72 +31,7 @@ void *kospvrvramGetAddr()
   return (void *)pvr_mem_base;
 }
 
-void kos_poly_compile(pvr_poly_hdr_t *dst, pvr_poly_cxt_t *src)
-{
-  int u,v;
-  pc_boolean vq, twid;
-  int format;
-  
-  pvr_context *cxt = (pvr_context *)dst;
-  
-  cxt->cmd = 0;
-  cxt->mode1 = 0;
-  pc_no_mod(cxt)->mode2 = 0;
-  pc_no_mod(cxt)->tex = 0;
-  
-  pc_set_command(cxt, PC_CMD_POLYGON);
-  
-  /* Or in the list type, shading type, color and UV formats */
-  pc_set_list(cxt, src->list_type);
-  pc_set_max_strip_length(cxt, PC_STRIP6);
-  pc_set_color_format(cxt, src->fmt.color);
-  pc_set_small_uv(cxt, src->fmt.uv);
-  pc_set_clip_mode(cxt, src->gen.clip_mode);
-  pc_set_gouraud(cxt, src->gen.shading);
-  pc_set_specular(cxt, src->gen.specular);
-	
-  /* Polygon mode 1 */
-  pc_set_depth_compare(cxt, src->depth.comparison);
-  pc_set_cull_mode(cxt, src->gen.culling);
-  pc_set_depth_write_disable(cxt, src->depth.write);
-  
-  /* Polygon mode 2 */
-  pc_set_blend_modes(cxt, src->blend.src, src->blend.dst);
-  pc_set_color_source(cxt, src->blend.src_enable);
-  pc_set_color_destination(cxt, src->blend.dst_enable);
-  pc_set_fog_mode(cxt, src->gen.fog_type);
-  pc_set_color_clamp(cxt, src->gen.color_clamp);
-  pc_set_enable_alpha(cxt, src->gen.alpha);
-  pc_set_texenv(cxt, src->txr.env);
-  
-  cxt->bf.a = cxt->bf.r = cxt->bf.g = cxt->bf.b = 1;
-  
-  if(src->txr.enable == PVR_TEXTURE_ENABLE)
-  {
-      u = pc_convert_size(src->txr.width);
-      v = pc_convert_size(src->txr.height);
-      vq = (src->txr.format>>30)&0x1;
-      twid = !((src->txr.format>>26)&0x1);
-      format = (src->txr.format>>27)&0x7;
-
-      pc_set_texture(cxt, src->txr.base, u, v, format, twid, src->txr.mipmap, vq);
-      
-      pc_set_disable_texture_alpha(cxt, src->txr.alpha);
-      pc_set_uv_flip(cxt, src->txr.uv_flip);
-      pc_set_uv_clamp(cxt, src->txr.uv_clamp);
-      int filter = src->txr.filter;
-      pc_set_anisotropic(cxt, (filter & 1));
-      pc_set_filter(cxt, (filter >> 1));
-      pc_set_mipmap_bias(cxt, src->txr.mipmap_bias);
-      
-      if (format == 5) {
-	pc_set_palette_4bit(cxt, (src->txr.format>>21)&0x3f);
-      } else if (format == 6) {
-	pc_set_palette_8bit(cxt, (src->txr.format>>25)&0x03);
-      }
-    }
-}
-
+#if 0
 int  arch_auto_init() {
     /* Initialize memory management */
     mm_init();
@@ -166,6 +101,7 @@ void  arch_auto_shutdown() {
     thd_shutdown();
     rtc_shutdown();
 }
+#endif
 
 /* Primitive buffer */
 unsigned int prim_buffer[256 * 1024 * 4] __attribute__((aligned(32)));
@@ -339,7 +275,7 @@ void draw_poly_char(void *sq, float x1, float y1, float a, float r, float g, flo
   v++;
 }
 
-void draw_poly_strf(pvr_poly_hdr_t *hdr, float x1, float y1, float a, float r, float g, float b, char *str) {
+void draw_poly_strf(pvr_context *hdr, float x1, float y1, float a, float r, float g, float b, char *str) {
   char *s;
   
   if (x1 == 0.0f) {
@@ -419,7 +355,14 @@ pvr_ptr_t tex_load_ram(unsigned char *in, int *tex_w, int *tex_h, int *type)
     return buffer;
 }
 
-static void draw_banner(pvr_poly_hdr_t *hdr, int w, int h)
+typedef struct {
+  float a1,r1,g1,b1;
+  float a2,r2,g2,b2;
+  float a3,r3,g3,b3;
+  float a4,r4,g4,b4;
+} bgcolor;
+
+static void draw_banner(pvr_context *hdr, int w, int h, bgcolor *bg)
 {
     void *sq = sqPrepare((void*)PVR_TA_INPUT);
     sqCopy32(sq, hdr);
@@ -432,21 +375,25 @@ static void draw_banner(pvr_poly_hdr_t *hdr, int w, int h)
     
     pv_set_pos(v, x1, y1, 1.0);
     pv_set_uv(v, 0.0, 0.0);
+    pv_set_argb_pack(v, bg->a1, bg->r1, bg->g1, bg->b1);
     pv_set_cmd_submit_vertex(v);
     v++;
 		
     pv_set_pos(v, x1, y1 + h, 1.0);
     pv_set_uv(v, 0.0, 1.0);
+    pv_set_argb_pack(v, bg->a2, bg->r2, bg->g2, bg->b2);
     pv_set_cmd_submit_vertex(v);
     v++;
 		
     pv_set_pos(v, x1 + w, y1, 1.0);
     pv_set_uv(v, 1.0, 0.0);
+    pv_set_argb_pack(v, bg->a3, bg->r3, bg->g3, bg->b3);
     pv_set_cmd_submit_vertex(v);
     v++;
 
     pv_set_pos(v, x1 + w, y1 + h, 1.0);
     pv_set_uv(v, 1.0, 1.0);
+    pv_set_argb_pack(v, bg->a4, bg->r4, bg->g4, bg->b4);
     pv_set_cmd_submit_vertex_eos(v);
     v++;
 }
@@ -484,26 +431,32 @@ static int check_CD(const char *path) {
 void LaunchMenu() {
   int i, frame;
   int w, h, type;
-  pvr_poly_cxt_t cxt;
-  pvr_poly_hdr_t hdr0,hdr1;
+  pvr_context hdr0,hdr1;
   pvr_ptr_t banner_tex;
   pvr_ptr_t font_tex;
+  pvr_context *cxt0, *cxt1;
 
   banner_tex = tex_load_ram(banner_data, &w, &h, &type);
 
-  pvr_poly_cxt_txr(&cxt, PVR_LIST_OP_POLY, type /*PVR_TXRFMT_RGB565|PVR_TXRFMT_VQ_ENABLE|PVR_TXRFMT_TWIDDLED*/, w, h, banner_tex, PVR_FILTER_BILINEAR);
-  cxt.gen.culling = PVR_CULLING_NONE;
-  cxt.txr.env = PVR_TXRENV_REPLACE;
-  kos_poly_compile(&hdr0, &cxt);
+  cxt0 = &hdr0;
+  cxt1 = &hdr1;
+
+  pc_set_default_polygon(cxt0);
+  pc_set_color_format(cxt0, PC_PACKED);
+  pc_set_cull_mode(cxt0, PC_CULL_DISABLE);
+  pc_set_enable_alpha(cxt0, 0);
+  pc_set_disable_texture_alpha(cxt0, 1);
+
+  pc_copy(cxt0, cxt1);
+
+  pc_set_texture(cxt0, banner_tex, pc_convert_size(w), pc_convert_size(h), (type>>27)&3, !((type>>16)&1), 0, ((type>>30)&1));
 
   font_tex = setup_font_texture();
+  pc_set_enable_alpha(cxt1, 1);
+  pc_set_disable_texture_alpha(cxt1, 0);
+  pc_set_list(cxt1, PC_BLEND_POLY);
+  pc_set_texture(cxt1, font_tex, pc_convert_size(256), pc_convert_size(256), PC_ARGB4444, 0, 0, 0);
 
-  pvr_poly_cxt_txr(&cxt, PVR_LIST_TR_POLY, PVR_TXRFMT_ARGB4444 | PVR_TXRFMT_NONTWIDDLED, 256, 256, font_tex, PVR_FILTER_NONE);
-  cxt.gen.culling = PVR_CULLING_NONE;
-  cxt.txr.env = PVR_TXRENV_MODULATE;
-  kos_poly_compile(&hdr1, &cxt);
-  //*((volatile unsigned int *)(void *)0xa05f8040) = 0xFFFFFF;
-  
   int checked = 0;
   const char *path[] = {
     "/cd/level/1/",
@@ -520,6 +473,14 @@ void LaunchMenu() {
   }
   */
 
+  bgcolor b = {
+     1.0, 1.0, 1.0, 1.0,
+     1.0, 1.0, 1.0, 1.0,
+     1.0, 1.0, 1.0, 1.0,
+     1.0, 1.0, 1.0, 1.0
+  };
+
+
   checked = 0;
 
   frame = 32;
@@ -535,7 +496,7 @@ void LaunchMenu() {
     pvr_wait_ready();
     pvr_scene_begin();
     pvr_list_begin(PVR_LIST_OP_POLY);
-    draw_banner(&hdr0, w, h);
+    draw_banner(&hdr0, w, h, &b);
     pvr_list_finish();
     pvr_list_begin(PVR_LIST_TR_POLY);
     if (frame & 32) {
@@ -550,17 +511,20 @@ void LaunchMenu() {
       break;
 
     timer_spin_sleep(17);
+
+#if 1
     for (i = 0; path[i] != NULL; i++) {
       if(check_CD(path[i]) > 0) {
 	checked = 1;
       }
     }
+#endif
   }
 
   pvr_wait_ready();
   pvr_scene_begin();
   pvr_list_begin(PVR_LIST_OP_POLY);
-  draw_banner(&hdr0, w, h);
+  draw_banner(&hdr0, w, h, &b);
   pvr_list_finish();
   pvr_list_begin(PVR_LIST_TR_POLY);
   draw_poly_strf(&hdr1, 0, 400, 1.0, 1.0, 1.0, 1.0, "LOADING...");
