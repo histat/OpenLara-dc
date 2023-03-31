@@ -84,7 +84,7 @@ namespace GAPI {
       if (pvr_base_mem != NULL) {
 	psp_vfree( (void*)pvr_base_mem );
 #ifndef NOSERIAL
-      printf("[%s] tex = %p size 0x%x\n", __func__, pvr_base_mem, size);
+      printf("[%s] tex = %p\n", __func__, pvr_base_mem);
 #endif
       }
 
@@ -316,6 +316,7 @@ namespace GAPI {
 	    int size = width * height * 2;
 
             memory = (pvr_ptr_t)psp_valloc( size );
+
 #ifndef NOSERIAL
 	    printf("[%s] tex = %p size 0x%x\n", __func__, memory, size);
 #endif
@@ -333,7 +334,7 @@ namespace GAPI {
             if (memory) {
 		psp_vfree( (void*)memory );
 #ifndef NOSERIAL
-      printf("[%s] tex = %p size 0x%x\n", __func__, pvr_base_mem, size);
+		printf("[%s] tex = %p\n", __func__, momory);
 #endif
                 memory = NULL;
             }
@@ -790,7 +791,6 @@ namespace GAPI {
 	    #if 0
 	    mat_trans_single3_nomod(vertex[i].coord.x, vertex[i].coord.y, vertex[i].coord.z, c.x, c.y, c.z);
 	    #else
-	    xmtrxPeek();
 
 	    c = vec4(vertex[i].coord.x, vertex[i].coord.y, vertex[i].coord.z, 1.0f);
 	    vec4f_ftrv(c.x, c.y, c.z, c.w);
@@ -831,8 +831,10 @@ namespace GAPI {
 	    vec3 result = vec3(0.0f);
 
 	    if (lightsCount) {
+	      xmtrxPush();
 	      xmtrxLoad(&Matrix[3]);
 	      applyLighting(result, vertex[i]);
+	      xmtrxPop();
 	    }
 
 	    result += ambient;
@@ -891,11 +893,8 @@ namespace GAPI {
       xmtrxMultiply(&Matrix[2]);
       xmtrxMultiplyUnaligned((float*)&mModel);
 
-      xmtrxPush();
-
       transform(range.iCount, mesh->iBuffer + range.iStart, mesh->vBuffer + range.vStart);
 
-      xmtrxDrop();
     }
 
     void initPalette(Color24 *palette, uint8 *lightmap) {
