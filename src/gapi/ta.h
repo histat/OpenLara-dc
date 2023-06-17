@@ -39,6 +39,10 @@ namespace GAPI {
 
     typedef ::Vertex Vertex;
 
+    int cullMode, blendMode;
+    vec3 clearColor;
+    bool isFrontCW;
+
     #ifdef COLOR_16
         typedef uint16 ColorSW;
     #else
@@ -46,7 +50,8 @@ namespace GAPI {
     #endif
     ColorSW swPaletteColor[256];
 
-    xMatrix Matrix[4];
+    mat4 svMatrix;
+    xMatrix tmpMatrix;
 
     enum {
       PaletteColor,
@@ -95,13 +100,10 @@ namespace GAPI {
 
     bool AlphaTestEnable;
     bool AlphaBlendEnable;
-    bool DepthTestEnable;
-    bool ZWriteEnable;
 
     pc_culling CullMode;
-    pc_blend_mode AlphaBlendSrc;
-    pc_blend_mode AlphaBlendDst;
-    vec3 clearColor;
+  //pc_blend_mode AlphaBlendSrc;
+  //pc_blend_mode AlphaBlendDst;
 
     enum {
         FALSE = false,
@@ -113,33 +115,15 @@ namespace GAPI {
       pc_copy(&m_PvrContext, dst);
 
       if (AlphaBlendEnable || AlphaTestEnable) {
-	pc_set_disable_texture_alpha(dst, 0);
-	pc_set_enable_alpha(dst, 1);
+	pc_set_enable_alpha(dst, TRUE);
+	pc_set_disable_texture_alpha(dst, FALSE);
+	pc_set_list(dst, PC_BLEND_POLY);
 
-	if (AlphaBlendEnable) {
-	  pc_set_list(dst, PC_BLEND_POLY);
-	  pc_set_blend_modes(dst, AlphaBlendSrc, AlphaBlendDst);
-	} else {
-	  pc_set_list(dst, PC_PUNCHTHROUGH);
-	  pc_set_blend_modes(dst, PC_SRC_ALPHA, PC_INV_SRC_ALPHA);
-	}
       } else {
 	pc_set_list(dst, PC_OPAQUE_POLY);
-	pc_set_blend_modes(dst, PC_ONE, PC_ZERO);
-	pc_set_enable_alpha(dst, 0);
-	pc_set_disable_texture_alpha(dst, 1);
+	pc_set_enable_alpha(dst, FALSE);
+	pc_set_disable_texture_alpha(dst, TRUE);
       }
-      if (ZWriteEnable) {
-	pc_set_depth_write_disable(dst, 0);
-      } else {
-	pc_set_depth_write_disable(dst, 1);
-      }
-      if (DepthTestEnable) {
-	pc_set_depth_compare(dst, PC_GEQUAL);
-      } else {
-	pc_set_depth_compare(dst, PC_ALWAYS);
-      }
-      pc_set_cull_mode(dst, CullMode);
     }
 
 
@@ -220,7 +204,6 @@ namespace GAPI {
       asm("pref @%0" : : "r" (s));
 
       while (cnt--) {
-	asm("pref @%0" : : "r" (s+8));
 	d[0] = *s++;
 	d[1] = *s++;
 	d[2] = *s++;
@@ -231,7 +214,6 @@ namespace GAPI {
 	d[7] = *s++;
 	asm("pref @%0" : : "r" (d));
 	d += 8;
-	asm("pref @%0" : : "r" (s+8));
 	d[0] = *s++;
 	d[1] = *s++;
 	d[2] = *s++;
@@ -266,7 +248,6 @@ namespace GAPI {
       asm("pref @%0" : : "r" (s));
 
       while (cnt--) {
-	asm("pref @%0" : : "r" (s+8*8));
 	COPY8888TO16(0);
 	COPY8888TO16(1);
 	COPY8888TO16(2);
@@ -277,7 +258,6 @@ namespace GAPI {
 	COPY8888TO16(7);
 	asm("pref @%0" : : "r" (d));
 	d += 8;
-	asm("pref @%0" : : "r" (s+8*8));
 	COPY8888TO16(0);
 	COPY8888TO16(1);
 	COPY8888TO16(2);
@@ -485,9 +465,6 @@ namespace GAPI {
         }
     };
 
-
-    int cullMode, blendMode;
-
     void init() {
         LOG("Vendor   : %s\n", "SEGA");
         LOG("Renderer : %s\n", "PowerVR2DC");
@@ -505,6 +482,7 @@ namespace GAPI {
 
 	pc_set_default_polygon(&m_PvrContext);
 	pc_set_color_format(&m_PvrContext, PC_PACKED);
+	isFrontCW = true;
 
 	#ifdef ENABLE_FOG
 	pc_set_specular(&m_PvrContext, 1);
@@ -568,12 +546,7 @@ namespace GAPI {
     }
 
     void setViewport(const short4 &v) {
-       mat4 m;
-
-       m.viewport((float)v.x, (float)v.y+v.w, (float)v.z, -(float)v.w, 0.0f, 1.0f);
-       xmtrxLoadUnaligned((float*)&m);
-       xmtrxStore(&Matrix[0]);
-
+      svMatrix.viewport(0.0f, (float)Core::height, (float)Core::width, -(float)Core::height, 0.0f, 1.0f);
     }
 
     void setScissor(const short4 &s) {
@@ -581,33 +554,40 @@ namespace GAPI {
 
     void setDepthTest(bool enable) {
 
-        DepthTestEnable = enable;
+	pc_set_depth_compare(&m_PvrContext, enable ? PC_GEQUAL : PC_ALWAYS );
     }
 
     void setDepthWrite(bool enable) {
 
-        ZWriteEnable = enable;
+	pc_set_depth_write_disable(&m_PvrContext, enable ? FALSE : TRUE);
     }
 
     void setColorWrite(bool r, bool g, bool b, bool a) {}
 
     void setAlphaTest(bool enable) {
-
-        AlphaTestEnable = enable;
+      AlphaTestEnable = enable;
     }
 
     void setCullMode(int rsMask) {
         cullMode = rsMask;
         switch (rsMask) {
-            case RS_CULL_BACK  : CullMode = PC_CULL_CW;  break;
-            case RS_CULL_FRONT : CullMode = PC_CULL_CCW; break;
-            default            : CullMode = PC_CULL_DISABLE;
+	case RS_CULL_BACK:
+	  pc_set_cull_mode(&m_PvrContext, PC_CULL_CW);
+	  break;
+	case RS_CULL_FRONT:
+	  pc_set_cull_mode(&m_PvrContext, PC_CULL_CCW);
+	  break;
+	default:
+	  pc_set_cull_mode(&m_PvrContext, PC_CULL_DISABLE);
         }
     }
 
     void setBlendMode(int rsMask) {
 
         blendMode = rsMask;
+	pc_blend_mode AlphaBlendSrc;
+	pc_blend_mode AlphaBlendDst;
+
         switch (rsMask) {
             case RS_BLEND_ALPHA: 
                 AlphaBlendSrc = PC_SRC_ALPHA;
@@ -621,25 +601,20 @@ namespace GAPI {
                 AlphaBlendSrc = PC_OTHER_COLOR;
                 AlphaBlendDst = PC_ZERO;
                 break;
-            case RS_BLEND_PREMULT :
+            case RS_BLEND_PREMULT:
                 AlphaBlendSrc = PC_ONE;
                 AlphaBlendDst = PC_INV_SRC_ALPHA;
                 break;
             default:
-                AlphaBlendEnable = FALSE;
-                return;
+	      AlphaBlendEnable = FALSE;
+	      pc_set_blend_modes(&m_PvrContext, PC_ONE, PC_ZERO);
+	      return;
         }
-        AlphaBlendEnable = TRUE;
+	AlphaBlendEnable = TRUE;
+	pc_set_blend_modes(&m_PvrContext, AlphaBlendSrc, AlphaBlendDst);
     }
 
-    void setViewProj(const mat4 &mView, const mat4 &mProj) {
-
-      xmtrxLoadUnaligned((float*)&mProj);
-      xmtrxStore(&Matrix[1]);
-
-      xmtrxLoadUnaligned((float*)&mView);
-      xmtrxStore(&Matrix[2]);
-    }
+    void setViewProj(const mat4 &mView, const mat4 &mProj) {}
 
     void updateLights(vec4 *lightPos, vec4 *lightColor, int count) {
 
@@ -696,7 +671,7 @@ namespace GAPI {
 	vec3f_dot(dir.x, dir.y, dir.z, dir.x, dir.y, dir.z, att);
 
 	float lum;
-	dir /= SQRT(att);
+	dir /= sqrtf(att);
 	vec3f_dot(normal.x, normal.y, normal.z, dir.x, dir.y, dir.z, lum);
 	
 	result += light.intensity * (max(0.0f, lum) * max(0.0f, 1.0f - att));
@@ -704,179 +679,167 @@ namespace GAPI {
 
     }
 
-  void transform(int iCount, const Index *indices, const Vertex *vertices) {
-
 	#define vec4f_ftrv(x, y, z, w) {       \
         register float __x __asm__("fr0") = x; \
         register float __y __asm__("fr1") = y; \
         register float __z __asm__("fr2") = z; \
         register float __w __asm__("fr3") = w; \
         __asm__ __volatile__( \
-                            "ftrv  xmtrx, fv0\n" \
-                            "fldi1 fr2\n" \
-                            "fdiv    fr3, fr2\n" \
-                            "fmul    fr2, fr0\n" \
-                            "fmul    fr2, fr1\n" \
-                            : "=f" (__x), "=f" (__y), "=f" (__z), "=f" (__w) \
-                            : "0" (__x), "1" (__y), "2" (__z), "3" (__w) \
-                            : ); \
+		"ftrv	xmtrx, fv0\n" \
+	        "fldi1	fr2\n" \
+		"fdiv	fr3, fr2\n" \
+		"fmul	fr2, fr0\n" \
+		"fmul	fr2, fr1\n" \
+		: "=f" (__x), "=f" (__y), "=f" (__z), "=f" (__w) \
+		: "0" (__x), "1" (__y), "2" (__z), "3" (__w) \
+                : ); \
         x = __x; y = __y; z = __z; w = __w; \
         }
 
-	polygon_vertex_t vertex_buffer[6] __attribute__((aligned(32)));
 
-	pvr_context dst;
+   void copy_vertcnt(bool colored, Vertex *vertex, polygon_vertex_t*dst, int vcount) {
+     for (int i=0; i<vcount; i++) {
+       unsigned int argb, oargb;
+       vec4 c;
+#if 0
+       c = swMatrix * vec4(vertex[i].coord.x, vertex[i].coord.y, vertex[i].coord.z, 1.0f);
 
-	ReCompileHeader(&dst);
+       float invw = 1/c.w;
+       c.x *= invw;
+       c.y *= invw;
+       c.z = invw;
+#else
+       c = vec4(vertex[i].coord.x, vertex[i].coord.y, vertex[i].coord.z, 1.0f);
+       vec4f_ftrv(c.x, c.y, c.z, c.w);
+#endif
 
-	Vertex vertex[6];
-	int face_list[7];
+       vec2 uv = vec2(vertex[i].texCoord.x, vertex[i].texCoord.y) * INV_SHORT_HALF;
+       float depth = c.w;
 
-        for (int i = 0; i < iCount;) {
-	  
-	  Index index[6];
-	  int vcount;
+       ubyte4 color;
+       int C[4];
 
-	  index[0]   = indices[i + 0];
-	  index[1]   = indices[i + 1];
-	  index[2]   = indices[i + 2];
-	  vertex[0] = vertices[index[0]];
-	  vertex[1] = vertices[index[1]];
-	  vertex[2] = vertices[index[2]];
+       if (colored) {
+	 color.x = uint32(vertex[i].color.x * vertex[i].light.x) >> 8;
+	 color.y = uint32(vertex[i].color.y * vertex[i].light.y) >> 8;
+	 color.z = uint32(vertex[i].color.z * vertex[i].light.z) >> 8;
+	 color.w = uint32(vertex[i].color.w * vertex[i].light.w) >> 8;
+       } else {
+	 color = vertex[i].light;
+       }
+
+       if (PaletteFlag == PaletteWater) {
+	 color.x = (uint32(color.x) * 150) >> 8;
+	 color.y = (uint32(color.y) * 230) >> 8;
+	 color.z = (uint32(color.z) * 230) >> 8;
+
+	 depth -= WATER_FOG_DIST;
+       } else {
+	 depth -= SW_FOG_START;
+       }
+
+       vec3 result = vec3(0.0f);
+
+       if (lightsCount) {
+	 xmtrxPush();
+	 xmtrxLoad(&tmpMatrix);
+	 applyLighting(result, vertex[i]);
+	 xmtrxPop();
+       } else if(c.z == 1.0f) {
+	 result = vec3(1.0f);
+	 color = vertex[i].light;
+       }
+
+       result += ambient;
+
+       C[0] = int(result.x * color.x);
+       C[1] = int(result.y * color.y);
+       C[2] = int(result.z * color.z);
+       C[3] = color.w;
+
+       C[0] = C[0] > 255 ? 255 : C[0];
+       C[1] = C[1] > 255 ? 255 : C[1];
+       C[2] = C[2] > 255 ? 255 : C[2];
+
+       C[0] = C[0] < 0 ? color.x : C[0];
+       C[1] = C[1] < 0 ? color.y : C[1];
+       C[2] = C[2] < 0 ? color.z : C[2];
+
+       argb = ARGB8888(C[0], C[1], C[2], C[3]);
+
+#ifdef ENABLE_FOG
+       if (FogParams > 0.0f && depth > 0.0f && !AlphaBlendEnable) {
+	 int alpha = 0;
+	 alpha = clamp(int(depth * FogParams * 255), 0, 255);
+	 oargb = alpha << 24;
+       } else
+#endif
+	 oargb = 0;
+
+       dst[i].x = c.x;
+       dst[i].y = c.y;
+       dst[i].z = c.z;
+       dst[i].u = uv.x;
+       dst[i].v = uv.y;
+
+       dst[i].base.color = argb;
+       dst[i].offset.color = oargb;
+
+     }
+
+   }
+
+     void transform(const Index *indices, const Vertex *vertices, int iStart, int iCount, int vStart) {
+
+	polygon_vertex_t vertex_buffer[4] __attribute__((aligned(32)));
+
+	pvr_context pc;
+
+	ReCompileHeader(&pc);
+
+	Vertex vertex[4];
+
+        for (int i = 0; i < iCount; i+=3) {
+
+	  Index index[3];
+
+	  index[0]   = indices[iStart + i + 0];
+	  index[1]   = indices[iStart + i + 1];
+	  index[2]   = indices[iStart + i + 2];
+	  vertex[0] = vertices[vStart + index[0]];
+	  vertex[1] = vertices[vStart + index[1]];
+	  vertex[2] = vertices[vStart + index[2]];
 
 	  bool colored = false;
 
 	  bool isTriangle = vertex[0].normal.w == 1;
 
 	  if (isTriangle) {
-	    face_list[0] = 3;
-	    face_list[1] = 0;
-	    face_list[2] = 1;
-	    face_list[3] = 2;
-	    i += 3;
-
-	    vcount = 3;
 	    colored = vertex[1].texCoord.y == 0;
 	  } else {
-
-	    index[3]   = indices[i + 5];
-	    vertex[3] = vertices[index[3]];
-
-	    i += 6;
-	    vcount = 4;
-	    
-	    face_list[0] = 4;
-	    face_list[1] = 0;
-	    face_list[2] = 1;
-	    face_list[3] = 3;
-	    face_list[4] = 2;
-
+	    index[3]   = indices[iStart + i + 5];
+	    vertex[3] = vertices[vStart + index[3]];
 	    colored = vertex[3].texCoord.y == 0;
+	    i += 6 - 3;
 	  }
 
-	  if(colored) {
-	    pc_set_textured(&dst, 0);
+	  if (colored) {
+	    pc_set_textured(&pc, FALSE);
 	  } else {
-	    pc_set_textured(&dst, 1);
+	    pc_set_textured(&pc, TRUE);
 	  }
 
+	  primitive_header((void *)&pc, 32);
 
-	  primitive_header((void *)&dst, 32);
-
-	  unsigned int argb, oargb;
-	  
-	  for (int i=0; i<vcount; i++) {
-
-	    vec4 c;
-	    #if 0
-	    mat_trans_single3_nomod(vertex[i].coord.x, vertex[i].coord.y, vertex[i].coord.z, c.x, c.y, c.z);
-	    #else
-
-	    c = vec4(vertex[i].coord.x, vertex[i].coord.y, vertex[i].coord.z, 1.0f);
-	    vec4f_ftrv(c.x, c.y, c.z, c.w);
-	    #endif
-
-	    vec2 uv = vec2(vertex[i].texCoord.x, vertex[i].texCoord.y) * INV_SHORT_HALF;
-
-	    float depth = c.w;
-
-	    ubyte4 color;
-	    int C[4];
-
-	    if (colored) {
-	      color.x = uint32(vertex[i].color.x * vertex[i].light.x) >> 8;
-	      color.y = uint32(vertex[i].color.y * vertex[i].light.y) >> 8;
-	      color.z = uint32(vertex[i].color.z * vertex[i].light.z) >> 8;
-	      color.w = uint32(vertex[i].color.w * vertex[i].light.w) >> 8;
-	    } else {
-	      color = vertex[i].light;
-	      /*
-	      color.x = vertex[i].light.x;
-	      color.y = vertex[i].light.y;
-	      color.z = vertex[i].light.z;
-	      color.w = vertex[i].light.w;
-	      */
-	    }
-
-	    if (PaletteFlag == PaletteWater) {
-	      color.x = (uint32(color.x) * 150) >> 8;
-	      color.y = (uint32(color.y) * 230) >> 8;
-	      color.z = (uint32(color.z) * 230) >> 8;
-
-	      depth -= WATER_FOG_DIST;
-	    } else {
-	      depth -= SW_FOG_START;
-	    }
-
-	    vec3 result = vec3(0.0f);
-
-	    if (lightsCount) {
-	      xmtrxPush();
-	      xmtrxLoad(&Matrix[3]);
-	      applyLighting(result, vertex[i]);
-	      xmtrxPop();
-	    }
-
-	    result += ambient;
-
-	    C[0] = int(result.x * color.x);
-	    C[1] = int(result.y * color.y);
-	    C[2] = int(result.z * color.z);
-	    C[3] = color.w;
-
-	    C[0] = C[0] > 255 ? 255 : C[0];
-	    C[1] = C[1] > 255 ? 255 : C[1];
-	    C[2] = C[2] > 255 ? 255 : C[2];
-
-	    C[0] = C[0] < 0 ? color.x : C[0];
-	    C[1] = C[1] < 0 ? color.y : C[1];
-	    C[2] = C[2] < 0 ? color.z : C[2];
-
-	    argb = ARGB8888(C[0], C[1], C[2], C[3]);
-
-#ifdef ENABLE_FOG
-	    unsigned int *list = (unsigned int *)&dst;
-
-	    if (FogParams > 0.0f && depth > 0.0f && ((list[0] >> 24) & 0x07) == 0) {
-	      int alpha = 0;
-	      alpha = clamp(int(depth * FogParams * 255), 0, 255);
-	      oargb = alpha << 24;
-            } else
-#endif
-	    oargb = 0;
-
-	    vertex_buffer[i].x = c.x;
-	    vertex_buffer[i].y = c.y;
-	    vertex_buffer[i].z = c.z;
-	    vertex_buffer[i].u = uv.x;
-	    vertex_buffer[i].v = uv.y;
-	    
-	    vertex_buffer[i].base.color = argb;
-	    vertex_buffer[i].offset.color = oargb;
-
+	  if (isTriangle) {
+	    int face_list[] = {0, 1, 2};
+	    copy_vertcnt(colored, vertex, vertex_buffer, 3);
+	    primitive_nclip_polygon(vertex_buffer, face_list, 3);
+	  } else {
+	    int face_list[] = {4, 0, 1, 3, 2};
+	    copy_vertcnt(colored, vertex, vertex_buffer, 4);
+	    primitive_nclip_polygon_strip(vertex_buffer, face_list, 5);
 	  }
-	  vcount++; // skip primitive size
-	  primitive_nclip_polygon_strip(vertex_buffer, face_list, vcount);
         }
     }
 
@@ -886,14 +849,13 @@ namespace GAPI {
       m = mModel.inverseOrtho();
       
       xmtrxLoadUnaligned((float*)&m);
-      xmtrxStore(&Matrix[3]);
+      xmtrxStore(&tmpMatrix);
 
-      xmtrxLoad(&Matrix[0]);
-      xmtrxMultiply(&Matrix[1]);
-      xmtrxMultiply(&Matrix[2]);
+      xmtrxLoadUnaligned((float*)&svMatrix);
+      xmtrxMultiplyUnaligned((float*)&mViewProj);
       xmtrxMultiplyUnaligned((float*)&mModel);
 
-      transform(range.iCount, mesh->iBuffer + range.iStart, mesh->vBuffer + range.vStart);
+      transform(mesh->iBuffer, mesh->vBuffer, range.iStart, range.iCount, range.vStart);
 
     }
 
@@ -915,7 +877,6 @@ namespace GAPI {
 	for (uint32 i = 0; i < 256; i++) {
 	  pvr_set_pal_entry(i+256, CONV_LUMINANCE(i));
 	}
-
     }
 
     void setPalette(int flag) {

@@ -2,10 +2,6 @@ OPTIMISE = -ffast-math -mpretend-cmove -fno-stack-protector
 
 DEBUG = 0
 
-CC = $(KOS_CC)
-CXX = $(KOS_CXX) 
-LDFLAGS = $(KOS_LDFLAGS) $(KOS_START)
-
 INCLUDES = ../.. ../dc
 
 CFLAGS = $(KOS_CFLAGS) -D__DC__ $(addprefix -I,$(INCLUDES)) $(OPTIMISE) -Wno-format -Wno-unused-variable -Wno-unused-but-set-variable -Wno-unused-value -Wno-sign-compare
@@ -17,7 +13,6 @@ ifeq ($(DEBUG), 0)
 CFLAGS += -DNOSERIAL
 TARGET := oldc-release.elf
 endif
-
 
 OBJS = main.o
 #OBJS += ../../libs/stb_vorbis/stb_vorbis.o
@@ -32,7 +27,7 @@ OBJS += watchdog.o profile.o
 all: $(TARGET)
 
 $(TARGET): $(OBJS)
-	$(CC) $(CFLAGS) $(LDFLAGS) -o $(TARGET)  \
+	$(KOS_CC) $(CFLAGS) $(KOS_LDFLAGS) -o $(TARGET)  \
 		$(OBJS) $(OBJEXTRA) -lz -lm -lstdc++ $(KOS_LIBS)
 
 main.o: ../../gapi/ta.h ../../*.h
@@ -43,14 +38,12 @@ primitive/prim_buffer.o: primitive/primitive.h
 
 include $(KOS_BASE)/Makefile.rules
 
-%.o: %.S
-	$(CC) $(CFLAGS) -c $< -o $@
-
 clean:
 	$(RM) $(OBJS) $(TARGET)
 
 strip:
 	sh-elf-strip $(TARGET) -o $(TARGET)
+
 addr:
 	sh-elf-addr2line -e $(TARGET) $(ARG)
 
@@ -67,7 +60,7 @@ data:
 	mkisofs -U -D -o $< DATA.ISO $(HOME)/data
 
 iso:
-	mkdcdisc -e $(TARGET) -d $(HOME)/data/DATA -d $(HOME)/data/DELDATA -n "Openlara" -a "histat" -N -o TEST.CDI
+	mkdcdisc -e $(TARGET) -d $(HOME)/data/DATA -d $(HOME)/data/DELDATA -n "OpenLara" -a "histat" -N -o TEST.CDI
 
 banner_data:
 	echo 'static unsigned char banner_data[] = {' >> $@.tmp

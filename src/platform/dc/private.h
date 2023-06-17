@@ -7,13 +7,8 @@ extern "C" {
 
 #include <kos.h>
 #include "pvr_cxt.h"
-#include "sh4_math.h"
 #include "libsh4.h"
 #include "libpspvram/valloc.h"
-
-#define FABS(x) MATH_fabs(x)
-#define SQRT(x) MATH_Fast_Sqrt(x)
-#define INVERT(x) MATH_Fast_Invert(x)
 
 #define PVR_SMALL_CULL          0x0078  // Minimum size of polygons for when culling is not PVR_CULLING_NONE
 

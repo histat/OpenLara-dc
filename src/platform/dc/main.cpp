@@ -358,17 +358,14 @@ struct JoyDevice {
 static int JoyCnt = 0;
 
 static purupuru_effect_t effect;
-#define JOY_MIN_UPDATE_FX_TIME   50
+#define JOY_MIN_UPDATE_FX_TIME   500
 
 bool osJoyReady(int index) {
-     return index == 0;
+     return (joyDevice[index].dev != NULL ? true: false);
 }
 
 void rumbleInit()
 {
-}
-
-void joyRumble(int index) {
 }
 
 void osJoyVibrate(int index, float L, float R) {
@@ -378,6 +375,11 @@ void osJoyVibrate(int index, float L, float R) {
 
 void joyInit()
 {
+  for (int i = 0; i < INPUT_JOY_COUNT; i++) {
+    JoyDevice &joy = joyDevice[i];
+    joy.dev = NULL;
+    joy.time = -1;
+  }
 }
 
 void joyUpdate() {
@@ -427,12 +429,12 @@ void joyUpdate() {
       int joy2y = st->joy2y+128;
 
       vec2 stick = vec2(float(joyx), float(joyy)) / 128.0f - 1.0f;
-      if (FABS(joyx) < 0.2f && FABS(joyy) < 0.2f)
+      if (fabs(joyx) < 0.2f && fabs(joyy) < 0.2f)
 	stick = vec2(0.0f);
       Input::setJoyPos(JoyCnt, jkL, stick);
 
       stick = vec2(float(joy2x), float(joy2y)) / 128.0f - 1.0f;
-      if (FABS(joy2x) < 0.2f && FABS(joy2y) < 0.2f)
+      if (fabs(joy2x) < 0.2f && fabs(joy2y) < 0.2f)
 	stick = vec2(0.0f);
       Input::setJoyPos(JoyCnt, jkR, stick);
 
@@ -493,11 +495,7 @@ int main()
     Core::width  = 640;
     Core::height = 480;
 
-#ifdef DEMO
-    Game::init("DATA/LEVEL2.PHD");
-#else
     Game::init();
-#endif
 
 #ifndef NOSERIAL
     wdResume();
