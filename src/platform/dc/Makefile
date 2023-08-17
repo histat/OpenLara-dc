@@ -5,7 +5,7 @@ DEBUG = 0
 INCLUDES = ../.. ../dc
 
 CFLAGS = $(KOS_CFLAGS) -D__DC__ $(addprefix -I,$(INCLUDES)) $(OPTIMISE) -Wno-format -Wno-unused-variable -Wno-unused-but-set-variable -Wno-unused-value -Wno-sign-compare
-CXXFLAGS = -std=gnu++11 $(KOS_CXXFLAGS) -fno-use-cxa-atexit
+CXXFLAGS = $(KOS_CXXFLAGS) -fno-use-cxa-atexit
 
 TARGET := oldc-debug.elf
 
@@ -27,7 +27,7 @@ OBJS += watchdog.o profile.o
 all: $(TARGET)
 
 $(TARGET): $(OBJS)
-	$(KOS_CC) $(CFLAGS) $(KOS_LDFLAGS) -o $(TARGET)  \
+	$(KOS_CC) $(KOS_LDFLAGS) -o $(TARGET)  \
 		$(OBJS) $(OBJEXTRA) -lz -lm -lstdc++ $(KOS_LIBS)
 
 main.o: ../../gapi/ta.h ../../*.h
@@ -39,7 +39,7 @@ primitive/prim_buffer.o: primitive/primitive.h
 include $(KOS_BASE)/Makefile.rules
 
 clean:
-	$(RM) $(OBJS) $(TARGET)
+	-rm -f $(OBJS) $(TARGET)
 
 strip:
 	sh-elf-strip $(TARGET) -o $(TARGET)
@@ -51,7 +51,7 @@ run: $(TARGET)
 	$(KOS_LOADER) -x $< -i DATA.ISO
 
 distclean:
-	$(RM) *.CDI *.BIN *.elf ip.txt 1ST_READ.BIN
+	-rm -f *.CDI *.BIN *.elf ip.txt 1ST_READ.BIN
 
 emu:
 	/mnt/c/opt/demul/demul.exe -run=dc -image=TEST.CDI

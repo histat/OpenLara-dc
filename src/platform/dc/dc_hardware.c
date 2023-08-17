@@ -6,7 +6,6 @@
 #include <kos.h>
 #include "private.h"
 
-#include "libsh4.h"
 #include "primitive/primitive.h"
 #include "libpspvram/valloc.h"
 #include "xmtrx.h"

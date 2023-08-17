@@ -1,18 +1,17 @@
 #ifndef SH4_ASM_H
 #define SH4_ASM_H
 
-#define NONCACHED(a) (typeof (a))(((unsigned int)(a)) |  (1 << 29))
-#define CACHED(a)    (typeof (a))(((unsigned int)(a)) & ~(1 << 29))
-#define OCI_BANK0(a) (typeof (a))(((unsigned int)(a)) & ~(1 << 25))
+#define NONCACHED(a) (typeof (&(a)[0]))(((unsigned int)(a)) |  (1 << 29))
+#define CACHED(a)    (typeof (&(a)[0]))(((unsigned int)(a)) & ~(1 << 29))
+#define OCI_BANK0(a) (typeof (&(a)[0]))(((unsigned int)(a)) & ~(1 << 25))
 #define OCI_BANK1(a) (typeof (&(a)[0]))(((unsigned int)(a)) |  (1 << 25))
 
 #define _sh4_xstr(s) _sh4_str(s)
 #define _sh4_str(s) #s
 
-#if 0
-#define xstr(s) str(s)
-#define str(s) #s
-#endif
+//#define xstr(s) str(s)
+//#define str(s) #s
+
 
 static inline void sh4Nop() {
 	__asm__ __volatile__("nop");

@@ -35,66 +35,79 @@ struct SH_QACR_LAYOUT {
 #define SH_QACR (*(volatile struct SH_QACR_LAYOUT *)(0xFF000038))
 #define SH_SQ_AREA	(0xE0000000)
 
-static inline void sqSetTargetAddress(void *dst) {
+static inline void sqSetTargetAddress(volatile void *dst) {
 	unsigned int highbits = (((unsigned int)dst) >> 24) & 0x1c;
 	SH_QACR.qacr1 = SH_QACR.qacr0 = highbits;
 }
 
-static inline void * sqGetWritePointer(void *dst) {
+static inline void * sqGetWritePointer(volatile void *dst) {
 	unsigned int inttarg = (((unsigned int)dst) & 0x3FFFFFF) | SH_SQ_AREA;
 	return (void*)inttarg;
 }
 
-static inline void * sqPrepare(void *dst) {
+static inline void * sqPrepare(volatile void *dst) {
 	sqSetTargetAddress(dst);
 	return sqGetWritePointer(dst);
 }
 
-static inline void _sqSubmit32Offset(void *sq, int ofs) {
+static inline void _sqSubmit32Offset(volatile void *sq, int ofs) {
 	unsigned int p = (unsigned int)sq;
 	sh4PrefetchMem((void*)(p+ofs));
 }
 
-static inline void sqSubmit32(void *sq) {
+static inline void sqSubmit32(volatile void *sq) {
 	_sqSubmit32Offset(sq, 0);
 }
 
-static inline void sqSubmit64A(void *sq) {
+static inline void sqSubmit64A(volatile void *sq) {
 	_sqSubmit32Offset(sq, 0);
 }
-static inline void sqSubmit64B(void *sq) {
+static inline void sqSubmit64B(volatile void *sq) {
 	_sqSubmit32Offset(sq, 32);
 }
 
-static inline void * sqSubmit32Advance(void *sq) {
+static inline void * sqSubmit32Advance(volatile void *sq) {
 	_sqSubmit32Offset(sq, 0);
-	return (void *)((int)sq + 32);
+	return (void*)((unsigned int)sq + 32);
 }
 
-static inline void * sqSubmit64BAdvance(void *sq) {
+static inline void * sqSubmit64BAdvance(volatile void *sq) {
 	_sqSubmit32Offset(sq, 32);
-	return (void *)((int)sq + 64);
+	return (void*)((unsigned int)sq + 64);
 }
 
 /* 
 	Copies 32 bytes into the store queue and submits it, then
 	returns sq + 32
 */
-static inline void * sqCopy32(void *sq, const void *src) {
+static inline void * sqCopy32(volatile void *sq, volatile const void *src) {
 	int *sqint = (int *)sq;
-	const int *srcint = (const int *)src;
+	volatile const int *srcint = (const int *)src;
 	
-	*sqint++ = *srcint++;
-	*sqint++ = *srcint++;
-	*sqint++ = *srcint++;
-	*sqint++ = *srcint++;
-	*sqint++ = *srcint++;
-	*sqint++ = *srcint++;
-	*sqint++ = *srcint++;
-	*sqint++ = *srcint++;
+	int tmp0, tmp1;
+	
+	tmp0 = *srcint++;
+	tmp1 = *srcint++;
+	*sqint++ = tmp0;
+	*sqint++ = tmp1;
+	
+	tmp0 = *srcint++;
+	tmp1 = *srcint++;
+	*sqint++ = tmp0;
+	*sqint++ = tmp1;
+	
+	tmp0 = *srcint++;
+	tmp1 = *srcint++;
+	*sqint++ = tmp0;
+	*sqint++ = tmp1;
+	
+	tmp0 = *srcint++;
+	tmp1 = *srcint++;
+	*sqint++ = tmp0;
+	*sqint++ = tmp1;
 	
 	sqSubmit32(sq);
-	return sqint;
+	return (void*)sqint;
 }
 
 #endif
