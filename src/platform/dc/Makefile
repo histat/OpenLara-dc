@@ -22,13 +22,15 @@ OBJS += audio.o aica.bin.o
 OBJS += xmtrx.o xmtrx_c.o
 OBJS += primitive/polygon.o primitive/modifier.o primitive/prim_buffer.o
 OBJS += watchdog.o profile.o
+OBJS += romdisk.o
+KOS_ROMDISK_DIR = romdisk
+
 
 
 all: $(TARGET)
 
 $(TARGET): $(OBJS)
-	$(KOS_CC) $(KOS_LDFLAGS) -o $(TARGET)  \
-		$(OBJS) $(OBJEXTRA) -lz -lm -lstdc++ $(KOS_LIBS)
+	kos-cc -o $(TARGET) $(OBJS) -lz -lm -lstdc++ $(KOS_LIBS)
 
 main.o: ../../gapi/ta.h ../../*.h
 
@@ -41,14 +43,14 @@ include $(KOS_BASE)/Makefile.rules
 clean:
 	-rm -f $(OBJS) $(TARGET)
 
-strip:
-	sh-elf-strip $(TARGET) -o $(TARGET)
+rm-elf:
+	-rm -f $(TARGET) romdisk.*
 
 addr:
 	sh-elf-addr2line -e $(TARGET) $(ARG)
 
 run: $(TARGET)
-	$(KOS_LOADER) -x $< -i DATA.ISO
+	$(KOS_LOADER) $(TARGET) -i DATA.ISO
 
 distclean:
 	-rm -f *.CDI *.BIN *.elf ip.txt 1ST_READ.BIN
@@ -61,12 +63,6 @@ data:
 
 iso:
 	mkdcdisc -e $(TARGET) -d $(HOME)/data/DATA -d $(HOME)/data/DELDATA -n "OpenLara" -a "histat" -N -o TEST.CDI
-
-banner_data:
-	echo 'static unsigned char banner_data[] = {' >> $@.tmp
-	hexdump -v -e '16/1 "0x%02x, " "\n"' \
-	data/banner.bin >> $@.tmp
-	echo '		0 };' >> $@.tmp
 
 icon_data_2bpp:
 	echo 'static unsigned char icon_data_2bpp[] = {' >> $@.tmp

@@ -1,19 +1,12 @@
 #include <stdio.h>
 #include <string.h>
 
-#include <sys/dirent.h>
-
 #include <kos.h>
 #include "private.h"
 
 #include "primitive/primitive.h"
-#include "libpspvram/valloc.h"
-#include "xmtrx.h"
 #include "watchdog.h"
-#include "pvr_cxt.h"
-#include "npvr_vertex.h"
 #include <../hardware/pvr/pvr_internal.h>
-#include "banner_data.h"
 
 
 extern void _audio_init();
@@ -29,8 +22,6 @@ void *kospvrvramGetAddr()
 {
   return (void *)pvr_mem_base;
 }
-
-KOS_INIT_FLAGS(INIT_DEFAULT|INIT_QUIET);
 
 /* Primitive buffer */
 unsigned int prim_buffer[256 * 1024 * 4] __attribute__((aligned(32)));
@@ -76,13 +67,7 @@ void dc_init_hardware()
 
  /* Init primitive buffer */
   primitive_buffer_init(0, 0, -1);
-#if 1
   primitive_buffer_init(2, &prim_buffer[256 * 1024 * 0], 256 * 1024 * 4);
-#else
-  primitive_buffer_init(2, &prim_buffer[256 * 1024 * 0], 256 * 1024 * 1);
-  primitive_buffer_init(4, &prim_buffer[256 * 1024 * 1], 256 * 1024 * 3);
-#endif
-
 
   arch_set_exit_path(ARCH_EXIT_MENU);
 
@@ -247,29 +232,30 @@ typedef struct
     int size;
 } tex_header_t;
 
-pvr_ptr_t tex_load_cd(char *filename, int *tex_w, int *tex_h, int *type)
+pvr_ptr_t tex_load_rom(char *filename, int *tex_w, int *tex_h, int *type)
 {
-    int file = 0;
+    file_t file = 0;
     pvr_ptr_t buffer;
     tex_header_t header;
 
-    file = open(filename, O_RDONLY);
+    file = fs_open(filename, O_RDONLY);
     if (file < 0)
         return 0;
 
     /* load header */
-    read(file, &header, 16);
+    fs_read(file, &header, 16);
     *tex_w = (int)header.width;
     *tex_h = (int)header.height;
     *type = header.type;
 
     buffer = psp_valloc( header.size );
-    read(file, buffer, header.size);
-    close(file);
+    fs_read(file, buffer, header.size);
+    fs_close(file);
 
     return buffer;
 }
 
+#if 0
 pvr_ptr_t tex_load_ram(unsigned char *in, int *tex_w, int *tex_h, int *type)
 {
     int file = 0;
@@ -287,6 +273,7 @@ pvr_ptr_t tex_load_ram(unsigned char *in, int *tex_w, int *tex_h, int *type)
 
     return buffer;
 }
+#endif
 
 typedef struct {
   float a1,r1,g1,b1;
@@ -348,15 +335,13 @@ static int poll_input()
 }
 
 static int check_CD(const char *path) {
-  int fd;
-  DIR *dirp;
 
-  dirp = opendir(path);
-  if (dirp == NULL) {
+  file_t fd = fs_open(path, O_DIR);
+  if (fd == -1) {
     return -1;
   }
 
-  closedir(dirp);
+  fs_close(fd);
 
   return 1;
 }
@@ -369,7 +354,7 @@ void LaunchMenu() {
   pvr_ptr_t font_tex;
   pvr_context *cxt0, *cxt1;
 
-  banner_tex = tex_load_ram(banner_data, &w, &h, &type);
+  banner_tex = tex_load_rom("/rd/lara.tex", &w, &h, &type);
 
   cxt0 = &hdr0;
   cxt1 = &hdr1;

@@ -4,7 +4,6 @@
 #include "core.h"
 
 #include "private.h"
-#include "xmtrx.h"
 #include "primitive/primitive.h"
 
 #define PROFILE_MARKER(title)
@@ -41,7 +40,6 @@ namespace GAPI {
 
     int cullMode, blendMode;
     vec3 clearColor;
-    bool isFrontCW;
 
     #ifdef COLOR_16
         typedef uint16 ColorSW;
@@ -480,9 +478,7 @@ namespace GAPI {
 
         pvr_base_mem = NULL;
 
-	pc_set_default_polygon(&m_PvrContext);
-	pc_set_color_format(&m_PvrContext, PC_PACKED);
-	isFrontCW = true;
+    pc_set_default_polygon_packed(&m_PvrContext);
 
 	#ifdef ENABLE_FOG
 	pc_set_specular(&m_PvrContext, 1);
@@ -554,7 +550,7 @@ namespace GAPI {
 
     void setDepthTest(bool enable) {
 
-	pc_set_depth_compare(&m_PvrContext, enable ? PC_GEQUAL : PC_ALWAYS );
+    pc_set_depth_compare(&m_PvrContext, enable ? PC_GEQUAL : PC_ALWAYS );
     }
 
     void setDepthWrite(bool enable) {

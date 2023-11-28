@@ -7,8 +7,10 @@ extern "C" {
 
 #include <kos.h>
 #include "pvr_cxt.h"
+#include "npvr_vertex.h"
 #include "sh4.h"
 #include "sq.h"
+#include "xmtrx.h"
 #include "libpspvram/valloc.h"
 
 #define PVR_SMALL_CULL          0x0078  // Minimum size of polygons for when culling is not PVR_CULLING_NONE
