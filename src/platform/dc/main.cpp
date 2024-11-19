@@ -501,9 +501,6 @@ int main()
     wdResume();
 #endif
 
-    pvr_scene_begin();
-    pvr_scene_finish();
-
     while (!Core::isQuit) {
 #ifndef NOSERIAL
       wdPet();
