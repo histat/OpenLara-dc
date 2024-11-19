@@ -216,7 +216,7 @@
     #include <os.h>
 
     #undef OS_PTHREAD_MT
-#elif __DC__
+#elif __DREAMCAST__
     #define _OS_DC   1
     #define _GAPI_TA  1
 
