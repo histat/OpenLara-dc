@@ -37,7 +37,7 @@ int primitive_buffer_init(int type, void *buffer, int size)
 	else
 	{
 		/* No buffer */
-		buffer_base[type] = (unsigned int *)0xe0000000;
+		buffer_base[type] = (unsigned int *)PVR_TA_INPUT;
 		buffer_offset[type] = buffer_base[type];
 		buffer_bottom[type] = 0;
 
@@ -61,12 +61,16 @@ void primitive_buffer_begin(void)
 
 void primitive_buffer_flush(void)
 {
-	unsigned int *d = (unsigned int *)0xe0000000;
+	//unsigned int *d = (unsigned int *)0xe0000000;
 	int i;
 
 	/* QACR0 QACR1 */
-	volatile int *qacr = (volatile int *)0xff000038;
-	qacr[0] = qacr[1] = 0x10;
+	//volatile int *qacr = (volatile int *)0xff000038;
+	//qacr[0] = qacr[1] = 0x10;
+
+#ifndef PRIM_USE_DMA
+    unsigned int *d = sq_lock(PVR_TA_INPUT);
+#endif
 
 	/* Direct list end */
 	pvr_list_finish();
@@ -88,6 +92,10 @@ void primitive_buffer_flush(void)
 		/* List start */
 		pvr_list_begin(i);
 
+#ifdef PRIM_USE_DMA
+        pvr_dma_transfer(s, 0, cnt * 4, PVR_DMA_TA, 1, NULL, 0);
+#else
+
 		while (cnt)
 		{
 			asm("pref @%0"
@@ -108,10 +116,15 @@ void primitive_buffer_flush(void)
 			d += 8;
 			cnt -= 8;
 		}
+#endif
 
 		/* List end */
 		pvr_list_finish();
 	}
+#ifndef PRIM_USE_DMA
+    sq_unlock();
+#endif
+
 }
 
 int primitive_header(void *header, int size)
@@ -125,8 +138,8 @@ int primitive_header(void *header, int size)
 	if (current_type == direct_type)
 	{
 		/* QACR0 QACR1 */
-		volatile int *qacr = (volatile int *)0xff000038;
-		qacr[0] = qacr[1] = 0x10;
+		//volatile int *qacr = (volatile int *)0xff000038;
+		//qacr[0] = qacr[1] = 0x10;
 	}
 	else
 	{
@@ -136,7 +149,7 @@ int primitive_header(void *header, int size)
 	}
 
 	/* Set buffer addr */
-	d = buffer_offset[current_type];
+	d = sq_lock(buffer_offset[current_type]);
 	buffer_offset[current_type] += size >> 2;
 
 	/* Write data */
@@ -147,6 +160,7 @@ int primitive_header(void *header, int size)
 		asm("pref @%0"
 			:
 			: "r"(s + 8));
+
 		d[0] = *s++;
 		d[1] = *s++;
 		d[2] = *s++;
@@ -156,7 +170,7 @@ int primitive_header(void *header, int size)
 		d[6] = *s++;
 		d[7] = *s++;
 
-		if (current_type == direct_type)
+		//if (current_type == direct_type)
 		{
 			asm("pref @%0"
 				:
@@ -165,6 +179,8 @@ int primitive_header(void *header, int size)
 
 		d += 8;
 	}
+
+    sq_unlock();
 
 	return 0;
 }
@@ -175,8 +191,8 @@ int prim_commit_vert_ready(int size)
 	if (current_type == direct_type)
 	{
 		/* QACR0 QACR1 */
-	  	volatile int *qacr = (volatile int *)0xff000038;
-		qacr[0] = qacr[1] = 0x10;
+	  	//volatile int *qacr = (volatile int *)0xff000038;
+		//qacr[0] = qacr[1] = 0x10;
 	}
 	else
 	{
@@ -190,7 +206,8 @@ int prim_commit_vert_ready(int size)
 
 void prim_commit_poly_vert(polygon_vertex_t *p, int eos)
 {
-	polygon_vertex_t *d = (polygon_vertex_t *)buffer_offset[current_type];
+	//polygon_vertex_t *d = (polygon_vertex_t *)buffer_offset[current_type];
+    polygon_vertex_t *d = (polygon_vertex_t *)sq_lock((void*)buffer_offset[current_type]);
 
 	if (eos)
 		d->flags = 0xf0000000; /* PVR_CMD_VERTEX_EOL */
@@ -205,10 +222,12 @@ void prim_commit_poly_vert(polygon_vertex_t *p, int eos)
 	d->base.color = p->base.color;
 	d->offset.color = p->offset.color;
 
-	if (current_type == direct_type)
+	//if (current_type == direct_type)
 		asm("pref @%0"
 			:
 			: "r"(d));
+
+    sq_unlock();
 
 	/* Update */
 	buffer_offset[current_type] += 8;
@@ -216,7 +235,8 @@ void prim_commit_poly_vert(polygon_vertex_t *p, int eos)
 
 void prim_commit_poly_inter(polygon_vertex_t *p, polygon_vertex_t *q, int eos)
 {
-	polygon_vertex_t *d = (polygon_vertex_t *)buffer_offset[current_type];
+	//polygon_vertex_t *d = (polygon_vertex_t *)buffer_offset[current_type];
+    polygon_vertex_t *d = (polygon_vertex_t *)sq_lock((void*)buffer_offset[current_type]);
 	packed_color_t c;
 	float pw = 1.0f / p->z;
 	float qw = 1.0f / q->z;
@@ -245,10 +265,12 @@ void prim_commit_poly_inter(polygon_vertex_t *p, polygon_vertex_t *q, int eos)
 	c.argb[3] = p->offset.argb[3] + (q->offset.argb[3] - p->offset.argb[3]) * inter;
 	d->offset.color = c.color;
 
-	if (current_type == direct_type)
+	//if (current_type == direct_type)
 		asm("pref @%0"
 			:
 			: "r"(d));
+
+    sq_unlock();
 
 	/* Update */
 	buffer_offset[current_type] += 8;
@@ -306,7 +328,7 @@ void prim_commit_modi_vert(modifier_header_t *eol_header, vertex_3f_t *a, vertex
 		/* Last vertex */
 		*d = buf;
 
-		if (current_type == direct_type)
+		//if (current_type == direct_type)
 			asm("pref @%0"
 				:
 				: "r"(d));
@@ -326,7 +348,7 @@ void prim_commit_modi_vert(modifier_header_t *eol_header, vertex_3f_t *a, vertex
 	/* Send vertex */
 	*d = buf;
 
-	if (current_type == direct_type)
+	//if (current_type == direct_type)
 		asm("pref @%0"
 			:
 			: "r"(d));
@@ -346,7 +368,7 @@ void prim_commit_spri_vert(sprite_vertex_t *p)
 
 	*d = *p;
 
-	if (current_type == direct_type)
+	//if (current_type == direct_type)
 		asm("pref @%0"
 			:
 			: "r"(d));

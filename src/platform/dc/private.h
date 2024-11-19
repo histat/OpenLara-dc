@@ -11,12 +11,13 @@ extern "C" {
 #include "sh4.h"
 #include "sq.h"
 #include "xmtrx.h"
-#include "libpspvram/valloc.h"
 
 #define PVR_SMALL_CULL          0x0078  // Minimum size of polygons for when culling is not PVR_CULLING_NONE
 
 #define PVR_FGET(REG) (* ( (float*)( 0xa05f8000 + (REG) ) ) )
 #define PVR_FSET(REG, VALUE) PVR_FGET(REG) = (VALUE)
+
+#define PRIM_USE_DMA
 
 void dc_init_hardware();
 
