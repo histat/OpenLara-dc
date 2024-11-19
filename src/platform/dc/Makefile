@@ -4,8 +4,8 @@ DEBUG = 0
 
 INCLUDES = ../.. ../dc
 
-CFLAGS = $(KOS_CFLAGS) -D__DC__ $(addprefix -I,$(INCLUDES)) $(OPTIMISE) -Wno-format -Wno-unused-variable -Wno-unused-but-set-variable -Wno-unused-value -Wno-sign-compare
-CXXFLAGS = $(KOS_CXXFLAGS) -fno-use-cxa-atexit
+CFLAGS = $(addprefix -I,$(INCLUDES)) $(OPTIMISE) -Wno-format -Wno-unused-variable -Wno-unused-but-set-variable -Wno-unused-value -Wno-sign-compare
+CXXFLAGS = $(CFLAGS) -fno-use-cxa-atexit -fno-exceptions -fno-rtti
 
 TARGET := oldc-debug.elf
 
@@ -17,7 +17,7 @@ endif
 OBJS = main.o
 #OBJS += ../../libs/stb_vorbis/stb_vorbis.o
 OBJS += ../../libs/tinf/tinflate.o 
-OBJS += dc_hardware.o libpspvram/valloc.o
+OBJS += dc_hardware.o
 OBJS += audio.o aica.bin.o
 OBJS += xmtrx.o xmtrx_c.o
 OBJS += primitive/polygon.o primitive/modifier.o primitive/prim_buffer.o
@@ -30,7 +30,7 @@ KOS_ROMDISK_DIR = romdisk
 all: $(TARGET)
 
 $(TARGET): $(OBJS)
-	kos-cc -o $(TARGET) $(OBJS) -lz -lm -lstdc++ $(KOS_LIBS)
+	kos-cc -o $(TARGET) $(OBJS) -lz -lm -lstdc++ $(LIBS)
 
 main.o: ../../gapi/ta.h ../../*.h
 
