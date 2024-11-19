@@ -6,38 +6,27 @@
 
 #include "primitive/primitive.h"
 #include "watchdog.h"
-#include <../hardware/pvr/pvr_internal.h>
 
 
 extern void _audio_init();
 extern void _audio_free();
 
-static pvr_ptr_t pvr_mem_base;
-
 extern void LaunchMenu();
 
-
-
-void *kospvrvramGetAddr()
-{
-  return (void *)pvr_mem_base;
-}
-
 /* Primitive buffer */
-unsigned int prim_buffer[256 * 1024 * 4] __attribute__((aligned(32)));
+unsigned int __attribute__((aligned(32))) prim_buffer[256 * 1024 * 4];
 
 xMatrix mtrx_stack[4];
 
+KOS_INIT_FLAGS(INIT_DEFAULT);
+
+pvr_init_params_t pvr_params = {
+	{ PVR_BINSIZE_32, 0, PVR_BINSIZE_16, 0, 0 }, 
+	(512 * 1024), 0, 0, 0, 3
+};
+
 void dc_init_hardware()
 {
-  pvr_init_params_t pvr_params = {
-    { PVR_BINSIZE_16, PVR_BINSIZE_0, PVR_BINSIZE_16, PVR_BINSIZE_0, PVR_BINSIZE_0 },
-    (int)(512 * 1024),
-    0,	//dma
-    0,	//fsaa
-    0	//autosort disable
-  };
-
 #ifndef NOSERIAL
   wdInit();
 #endif
@@ -46,71 +35,43 @@ void dc_init_hardware()
 
   _audio_init();
 
-  pvr_mem_base = NULL;
+  pvr_init_defaults();
 
-
-  pvr_init (&pvr_params);
-  
-  pvr_mem_base = (pvr_ptr_t)(PVR_RAM_INT_BASE + pvr_state.texture_base);
-#ifndef NOSERIAL
-  printf("reset pvr_mem_base at 0x%4x ", pvr_mem_base);
-#endif
-  
   pvr_set_zclip(0.0f);
   
   pvr_set_bg_color(0.0, 0.0, 0.0);
 
-  PVR_FSET(PVR_SMALL_CULL, 0.1f);
+  PVR_FSET(PVR_SMALL_CULL, 0.01f);
 
   PVR_FSET(0x11C, 0.5f);
   PVR_SET(0x0e4, (640 >> 5));
-
- /* Init primitive buffer */
-  primitive_buffer_init(0, 0, -1);
-  primitive_buffer_init(2, &prim_buffer[256 * 1024 * 0], 256 * 1024 * 4);
-
-  arch_set_exit_path(ARCH_EXIT_MENU);
 
 #ifndef NOSERIAL
   wdPause();
 #endif
   LaunchMenu();
-}
 
-extern void *get_romfont_address();
-__asm__("\
-			\n\
-.globl _romfont_address \n\
-_get_romfont_address:	\n\
-    mov.l 1f,r0		\n\
-    mov.l @r0,r0	\n\
-    jmp @r0		\n\
-    mov #0,r1		\n\
-    .align 2		\n\
-1:  .long 0x8c0000b4	\n\
-			\n\
-");
+  vid_set_enabled(0);
+  vid_set_mode(DM_640x480, PM_RGB565);
+  pvr_init(&pvr_params);
+  vid_set_enabled(1);
+
+  pvr_init (&pvr_params);
+
+ /* Init primitive buffer */
+  primitive_buffer_init(0, 0, -1);
+  primitive_buffer_init(2, &prim_buffer[256 * 1024 * 0], 256 * 1024 * 4);
+
+  //arch_set_exit_path(ARCH_EXIT_MENU);
+}
 
 void _bfont_draw(void *buffer, int bufwidth, int opaque, int c)
 {
   int i,j;
-  uint8 *fa = (uint8 *)get_romfont_address();
-  
-  /* By default, map to a space */
-  uint32 index = 72 << 2;
-  
-  /* 33-126 in ASCII are 1-94 in the font */
-  if(c >= 33 && c <= 126)
-    index = c - 32;
-  
-  /* 160-255 in ASCII are 96-161 in the font */
-  else if(c >= 160 && c <= 255)
-    index = c - (160 - 96);
-  
-  unsigned char *s = fa + index * (12*24/8);
+  uint8_t *s = bfont_find_char(c);
   
   const int yalign = bufwidth;
-  uint16 *dst = (uint16*)buffer;
+  uint16_t *dst = (uint16_t *)buffer;
   int bits;
   for (i=0; i<12; i++) {
     bits = *s++ <<16;
@@ -142,10 +103,10 @@ pvr_ptr_t setup_font_texture() {
   int x, y;
   pvr_ptr_t buffer;
 
-  buffer = (pvr_ptr_t)psp_valloc( 256*256*2 );
-  uint16 *vram = (uint16 *)buffer;
+  buffer = pvr_mem_malloc( 256*256*2 );
+  uint16_t *vram = (uint16_t *)buffer;
 
-  vram = (uint16 *)buffer;
+  vram = (uint16_t *)buffer;
   for (y=0; y<8; y++) {
     for (x=0; x<16; x++) {
 	_bfont_draw(vram, 256, 0, y*16+x);
@@ -211,7 +172,8 @@ void draw_poly_strf(pvr_context *hdr, float x1, float y1, float a, float r, floa
     x1 = (640.0f - len) / 2;
   }
   
-  void *sq = sqPrepare((void*)PVR_TA_INPUT);
+  //void *sq = sqPrepare((void*)PVR_TA_INPUT);
+  void *sq = sq_lock(PVR_TA_INPUT);
   sqCopy32(sq, hdr);
   
   s = str;
@@ -221,6 +183,8 @@ void draw_poly_strf(pvr_context *hdr, float x1, float y1, float a, float r, floa
     } else
       draw_poly_char(sq, x1+=14.0f, y1, a, r, g, b, *s++);
   }
+
+  sq_unlock();
 }
 
 typedef struct
@@ -248,7 +212,7 @@ pvr_ptr_t tex_load_rom(char *filename, int *tex_w, int *tex_h, int *type)
     *tex_h = (int)header.height;
     *type = header.type;
 
-    buffer = psp_valloc( header.size );
+    buffer = pvr_mem_malloc( header.size );
     fs_read(file, buffer, header.size);
     fs_close(file);
 
@@ -268,7 +232,7 @@ pvr_ptr_t tex_load_ram(unsigned char *in, int *tex_w, int *tex_h, int *type)
     *tex_h = (int)header.height;
     *type = header.type;
 
-    buffer = psp_valloc( header.size );
+    buffer = pvr_mem_malloc( header.size );
     memcpy(buffer, in + 16, header.size);
 
     return buffer;
@@ -284,7 +248,8 @@ typedef struct {
 
 static void draw_banner(pvr_context *hdr, int w, int h, bgcolor *bg)
 {
-    void *sq = sqPrepare((void*)PVR_TA_INPUT);
+    //void *sq = sqPrepare((void*)PVR_TA_INPUT);
+    void *sq = sq_lock(PVR_TA_INPUT);
     sqCopy32(sq, hdr);
 
     float x1,y1;
@@ -316,6 +281,8 @@ static void draw_banner(pvr_context *hdr, int w, int h, bgcolor *bg)
     pv_set_argb_pack(v, bg->a4, bg->r4, bg->g4, bg->b4);
     pv_set_cmd_submit_vertex_eos(v);
     v++;
+
+    sq_unlock();
 }
 
 static int poll_input()
@@ -439,22 +406,11 @@ void LaunchMenu() {
 #endif
   }
 
-  pvr_wait_ready();
-  pvr_scene_begin();
-  pvr_list_begin(PVR_LIST_OP_POLY);
-  draw_banner(&hdr0, w, h, &b);
-  pvr_list_finish();
-  pvr_list_begin(PVR_LIST_TR_POLY);
-  draw_poly_strf(&hdr1, 0, 400, 1.0, 1.0, 1.0, 1.0, "LOADING...");
-  pvr_list_finish();
-  pvr_scene_finish();
+  timer_spin_sleep(17*4);
 
-  pvr_wait_ready();
-  //pvr_scene_begin();
-  //pvr_scene_finish();
-  
-  psp_vfree( (void*)banner_tex );
-  psp_vfree( (void*)font_tex );
+  pvr_mem_free( (void*)banner_tex );
+  pvr_mem_free( (void*)font_tex );
+
   return;
 }
 

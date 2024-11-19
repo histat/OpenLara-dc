@@ -6531,6 +6531,11 @@ namespace TR {
                 case VER_TR1_PC  : 
                     #if defined(_GAPI_SW)
                         return Color32(texture & 0xFF, 0, 0, 142);
+					#elif defined(_GAPI_TA)
+                        {
+                            Color32 p = palette[texture & 0xFF];
+                            return Color32(p.r, p.g, p.b, 142);
+                        }
                     #else
                         return palette[texture & 0xFF];
                     #endif
