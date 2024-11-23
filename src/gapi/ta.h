@@ -691,8 +691,6 @@ namespace GAPI {
 
 	polygon_vertex_t vertex_buffer[4] __attribute__((aligned(32)));
 
-	//Vertex vertex[4];
-
     const bool colored = vertices[vStart + indices[iStart]].color.w == 142;
     int vIndex = 0;
     bool isTriangle = false;
@@ -742,7 +740,7 @@ namespace GAPI {
 	 color.x = uint32(vertex.color.x * vertex.light.x) >> 8;
 	 color.y = uint32(vertex.color.y * vertex.light.y) >> 8;
 	 color.z = uint32(vertex.color.z * vertex.light.z) >> 8;
-	 color.w = uint32(vertex.color.w * vertex.light.w) >> 8;
+     color.w = vertex.light.w;
        } else {
            color = vertex.light;
        }
